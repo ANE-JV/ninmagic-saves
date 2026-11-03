@@ -1,0 +1,23 @@
+{
+  "version": "0.2.0",
+  "date": "2026-11-03",
+  "nro_sha256": "34f20ee2093eed43f2a979e93b53fbcf19ffe37f4aff13ee57aeef980d7dde49",
+  "nro_bytes": 2033649,
+  "switch_build": "devkitA64/libnx: passed",
+  "nro_resources": "NACP identity/version, icon, RomFS font/logo hashes verified",
+  "host_suites": {
+    "self_updater": {"scenarios": 76, "checks": 747, "passed": true},
+    "https": {"checks": 30, "passed": true},
+    "ui_environment_policy": {"checks": 21, "passed": true},
+    "save_transfer": {"checks": 698, "passed": true},
+    "reboot_workflow": {"passed": true, "fixtures": "synthetic"},
+    "archived_reader_client": {"checks": 236, "passed": true, "linked_into_nro": false},
+    "archived_reader_probe": {"passed": true, "linked_into_nro": false}
+  },
+  "ui_previews": "Rendered from the actual UI using explicit fictitious data; reviewed for layout",
+  "hardware_tested": false,
+  "save_import_tested_on_console": false,
+  "reboot_tested_on_console": false,
+  "universal_compatibility_verified": false,
+  "note": "Host tests simulate failure/recovery. They do not prove physical-console behavior or ban immunity."
+}

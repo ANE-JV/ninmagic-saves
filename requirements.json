@@ -1,0 +1,44 @@
+{
+  "name": "ninmagic-saves",
+  "version": "0.2.0",
+  "target": "Nintendo Switch homebrew NRO under Atmosphere",
+  "primary_required_workflow": [
+    "Start from emuMMC Homebrew Menu",
+    "Confirm/select CFW sysMMC boot",
+    "Reboot/reopen same NRO on sysMMC with networking disabled beforehand",
+    "Enumerate and copy original account/device saves read-only to SD",
+    "Reboot/reopen same NRO on emuMMC",
+    "Map copies to matching existing saves and chosen destination accounts",
+    "Verify destination backup, ask confirmation, restore, verify, retain recovery"
+  ],
+  "no_atmosphere_code_or_module_changes": true,
+  "stock_nro_execution_supported": false,
+  "nro_auto_launch_after_reboot": false,
+  "source_save_writes_allowed": false,
+  "restore_only_in_verified_emummc": true,
+  "hardware_specific_reboot": "Erista one-shot Hekate; manual handoff on Mariko or unsupported configuration",
+  "match_games_by": "Program/Title ID and save kind, not source user name",
+  "different_source_and_destination_users_allowed": true,
+  "multiple_source_saves": "User selects distinct saves; never silently merge",
+  "before_overwriting_destination": "Verified backup and explicit in-app confirmation",
+  "branding": {
+    "logo": "NinMagic",
+    "accent": "magenta and cyan neon",
+    "icon_subtitle": "SAVES"
+  },
+  "github_repository": "ANE-JV/ninmagic-saves",
+  "updates": "Own public HTTPS channel; network updater only in verified emuMMC",
+  "ban_immunity_guaranteed": false,
+  "status": "0.2.0 beta compiled and host-tested; physical-console validation pending",
+  "universal_compatibility_verified": false,
+  "hardware_tested": false,
+  "do_not_publish": [
+    "Console inspection files",
+    "Device identities",
+    "Keys",
+    "Save data",
+    "NAND images"
+  ],
+  "software_created": true,
+  "repository_created": true
+}

@@ -1,0 +1,10 @@
+{
+  "tool": "built-in image_gen",
+  "use_case": "precise-object-edit",
+  "source": "Existing NinMagic JV logo supplied in the user's workspace",
+  "prompt": "Preserve the hooded character silhouette, mask, crossed arms, shield and JV letters. Replace part of the cyan border glow with vivid neon magenta; retain cyan highlights and dark navy background. Add small, legible SAVES below JV. Square opaque icon; no other text or symbols.",
+  "master": "assets/ninmagic-saves-master.png",
+  "app_icon": "assets/icon.jpg",
+  "in_app_asset": "romfs/logo.rgba",
+  "conversion": "Master resized to 256x256; JPEG icon and raw RGBA runtime asset. No artistic edits during conversion."
+}

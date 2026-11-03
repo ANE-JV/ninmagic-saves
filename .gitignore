@@ -1,0 +1,13 @@
+inspection-*/
+private/
+*.keys
+*.bin
+*.sav
+build/
+dist/
+output/
+*.elf
+*.nacp
+__pycache__/
+*.pyc
+!romfs/font.bin

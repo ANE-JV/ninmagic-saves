@@ -1,0 +1,15 @@
+NinMagic Saves reboot workflow
+
+The bpc:ams reboot client follows the GPL-2.0-only Atmosphere reference client:
+Copyright (c) Atmosphere-NX.
+https://github.com/Atmosphere-NX/Atmosphere/tree/master/troposphere/reboot_to_payload
+
+Adapted 2026-11-03 for explicit NinMagic confirmation, runtime checks, a RAM-only
+Hekate boot configuration and a manual fallback on unsupported hardware.
+The Hekate boot_cfg ABI is documented by CTCaer/hekate:
+https://github.com/CTCaer/hekate
+
+NinMagic Saves program source is distributed under GPL-2.0-only (see LICENSE).
+Corresponding source: https://github.com/ANE-JV/ninmagic-saves
+Branding assets retain their separate ownership. Bundled libraries and font
+retain the licenses supplied alongside this notice.
