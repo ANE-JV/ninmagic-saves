@@ -148,7 +148,7 @@ std::string modeLabel(UiEnvironment env){return env==UiEnvironment::EmuMmc?"emuM
 std::pair<std::string,std::string> actionLabel(HomeAction action){
     switch(action){
         case HomeAction::BringOriginals:return {"Traer partidas originales","Prepara el acceso a sysMMC CFW y revisa el reinicio."};
-        case HomeAction::Import:return {"Importar copias desde la microSD","Elige el juego y la cuenta de destino en emuMMC."};
+        case HomeAction::Import:return {"Importar copias desde la microSD","Elige el juego y la partida de destino en emuMMC."};
         case HomeAction::Backups:return {"Recuperar una copia previa","Restaura el estado anterior a una importación."};
         case HomeAction::Export:return {"Exportar partidas originales","Copia las seleccionadas a la microSD. El origen se conserva."};
         case HomeAction::ReturnEmuMmc:return {"Volver a emuMMC","Revisa el arranque y abre NinMagic Saves de nuevo."};
@@ -171,7 +171,7 @@ void home(const View&v){
 }
 void list(const View&v){
     const bool sources=v.screen==Screen::Sources,imports=v.screen==Screen::Imports,targets=v.screen==Screen::Targets;
-    heading(sources?"Partidas del sistema original":imports?"Copias guardadas en la microSD":targets?"Elige la cuenta de destino":"Copias previas a una importación",
+    heading(sources?"Partidas del sistema original":imports?"Copias guardadas en la microSD":targets?"Elige la partida de destino":"Copias previas a una importación",
         sources?"A marca varias partidas. Y revisa la copia a microSD.":targets?"Mismo juego; la cuenta y la versión pueden ser diferentes.":"Selecciona una copia para revisar el siguiente paso.");
     box(37,244,760,380);accent(38,245,758);box(816,244,427,380);accent(817,245,425);
     if(v.rows.empty())wrapped(v.transferDetail.empty()?"No hay resultados disponibles.":v.transferDetail,63,285,708,21,7,muted);
@@ -205,9 +205,9 @@ void transferConfirm(const View&v,bool recovery){
     heading(recovery?"Recuperar la partida anterior":"Confirmar importación",recovery?"Se restaurará la copia previa a esta importación":"Mismo juego; la cuenta y la versión pueden ser diferentes.");
     box(37,244,1206,380);accent(38,245,1204);fitted(v.sourceGame,62,270,1155,26,ink);
     text("JUEGO / TITLE ID",63,317,13,magenta);text(v.sourceTitleId,63,345,20,cyan);
-    text(recovery?"CUENTA DE DESTINO":"CUENTA DE ORIGEN",63,392,13,magenta);fitted(recovery?v.destinationProfile:v.sourceProfile,63,419,540,20);
+    text(recovery?"DESTINO":"ORIGEN",63,392,13,magenta);fitted(recovery?v.destinationProfile:v.sourceProfile,63,419,540,20);
     text(recovery?v.destinationAccountId:v.sourceAccountId,63,450,12,muted);
-    if(!recovery){text("CUENTA DE DESTINO EN EMUMMC",642,392,13,magenta);fitted(v.destinationProfile,642,419,575,20);text(v.destinationAccountId,642,450,12,muted);}
+    if(!recovery){text("DESTINO EN EMUMMC",642,392,13,magenta);fitted(v.destinationProfile,642,419,575,20);text(v.destinationAccountId,642,450,12,muted);}
     text(recovery?"COPIA REGISTRADA / SE VERIFICA ANTES DE ESCRIBIR":v.backupVerified?"BACKUP DEL DESTINO VERIFICADO":"BACKUP NO VERIFICADO",63,471,13,v.backupVerified?green:orange);
     exactPath(v.backupPath,63,498,1156,15,2,cyan);
     wrapped(recovery?"Se perderán los cambios posteriores a esa importación. La copia se conserva tras restaurarla.":"A reemplaza el destino sin unir progresos ni convertir formatos. Un juego antiguo puede no reconocer un guardado más nuevo.",63,572,1156,17,2,orange);

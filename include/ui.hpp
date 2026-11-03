@@ -5,7 +5,7 @@
 #include <vector>
 
 namespace nmsaves {
-inline constexpr char AppVersion[] = "0.2.3";
+inline constexpr char AppVersion[] = "0.2.4";
 inline constexpr char AppPath[] = "sdmc:/switch/NinMagicSaves/NinMagic-Saves.nro";
 enum class UiEnvironment { Unknown, EmuMmc, SysMmc };
 enum class HomeAction { Refresh, BringOriginals, Import, Backups, Export, ReturnEmuMmc };

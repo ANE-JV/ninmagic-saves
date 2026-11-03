@@ -82,6 +82,10 @@ struct SaveCapacityMetadata {
 };
 bool validatedSaveCapacity(const SaveEntry& mounted, const SaveCapacityMetadata& metadata,
                            uint64_t& bytes, std::string& error);
+// Conservative per-commit write budget, not free space or a guarantee that a
+// filesystem operation will succeed. Never adds the journal to usable capacity.
+bool validatedSaveWriteBudget(const SaveEntry& mounted, const SaveCapacityMetadata& metadata,
+                              uint64_t& bytes, std::string& error);
 class Backend {
 public:
     virtual ~Backend() = default;
@@ -90,6 +94,7 @@ public:
     virtual bool mount(const SaveEntry& save, bool writable, std::string& path, std::string& error) = 0;
     virtual void unmount() = 0;
     virtual bool saveCapacity(uint64_t& bytes, std::string& error) = 0;
+    virtual bool saveWriteBudget(uint64_t& bytes, std::string& error) = 0;
     virtual bool commitSave(std::string& error) = 0;
     virtual bool commitSd(std::string& error) = 0;
     // Test-only fault hook. Native backend always returns true.

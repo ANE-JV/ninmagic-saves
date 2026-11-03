@@ -43,7 +43,12 @@ struct Fake final : transfer_detail::Backend {
     unsigned readMounts=0,writeMounts=0,saveCommits=0,sdCommits=0,envChecks=0;
     unsigned failCommit=0,failSd=0;
     uint64_t capacity=64*1024*1024;
+    int64_t journalSize=16*1024*1024;
     bool capacityKnown=true;
+    bool journalKnown=true,transactional=false,poisoned=false;
+    uint64_t journalLimit=0,maxTransactionBytes=0;
+    unsigned freshWriteMounts=0;
+    std::map<std::string,std::string> committed;
     unsigned readonlyCapacityQueries=0,writableCapacityQueries=0;
     std::function<void(transfer_detail::SaveCapacityMetadata&)> changeCapacityMetadata;
     bool failAllCommits=false,missingTarget=false,duplicateTarget=false,failEnumeration=false,mounted=false,writable=false;
@@ -64,24 +69,71 @@ struct Fake final : transfer_detail::Backend {
         if(entry.saveDataId==source.saveDataId) { require(!write,"source never opened writable"); path=sourcePath; }
         else if(entry.saveDataId==target.saveDataId) path=targetPath;
         else return false;
-        mountedPath=path; mountedSave=entry; mounted=true; writable=write; if(write) ++writeMounts; else ++readMounts; return true;
+        mountedPath=path; mountedSave=entry; mounted=true; writable=write;
+        if(write) { ++writeMounts; ++freshWriteMounts; if(transactional) { committed=contents(targetPath); poisoned=false; } }
+        else ++readMounts;
+        return true;
     }
-    void unmount() override { mounted=false; writable=false; mountedPath.clear(); mountedSave={}; }
+    void unmount() override {
+        if(transactional&&mounted&&writable) {
+            // Model save transaction discard on close, including a poisoned
+            // transaction. Only successful commitSave snapshots survive.
+            fs::remove_all(targetPath); fs::create_directories(targetPath);
+            for(const auto& item:committed) {
+                if(item.second=="<directory>") fs::create_directories(targetPath+"/"+item.first);
+                else put(targetPath+"/"+item.first,item.second);
+            }
+            poisoned=false;
+        }
+        mounted=false; writable=false; mountedPath.clear(); mountedSave={};
+    }
     bool saveCapacity(uint64_t& bytes,std::string& error) override {
         bytes=0;
         require(mounted&&mountedPath==targetPath,"capacity queries identify the mounted destination");
         if(writable) ++writableCapacityQueries; else ++readonlyCapacityQueries;
         if(!capacityKnown) { error="metadata capacity query failed"; return false; }
         auto metadata=capacityMetadata(mountedSave,static_cast<int64_t>(capacity));
+        metadata.journalSize=journalSize;
         if(changeCapacityMetadata) changeCapacityMetadata(metadata);
         return transfer_detail::validatedSaveCapacity(mountedSave,metadata,bytes,error);
     }
+    bool saveWriteBudget(uint64_t& bytes,std::string& error) override {
+        bytes=0; require(mounted&&mountedPath==targetPath,"write budget identifies mounted destination");
+        if(!journalKnown) { error="journal metadata query failed"; return false; }
+        auto metadata=capacityMetadata(mountedSave,static_cast<int64_t>(capacity)); metadata.journalSize=journalSize;
+        if(changeCapacityMetadata) changeCapacityMetadata(metadata);
+        return transfer_detail::validatedSaveWriteBudget(mountedSave,metadata,bytes,error);
+    }
     bool commitSave(std::string& error) override {
         require(mounted&&writable&&mountedPath==targetPath,"commits only mounted destination");
-        ++saveCommits; if(failAllCommits||saveCommits==failCommit) { error="injected save commit failure"; return false; } return true;
+        ++saveCommits;
+        if(transactional) {
+            const auto now=contents(targetPath); uint64_t changedBytes=0;
+            for(const auto& item:now) {
+                auto previous=committed.find(item.first);
+                if(previous!=committed.end()&&previous->second==item.second) continue;
+                changedBytes+=4096; // metadata cost for create/update
+                if(item.second!="<directory>") {
+                    size_t common=0;
+                    if(previous!=committed.end()&&previous->second!="<directory>")
+                        while(common<item.second.size()&&common<previous->second.size()&&item.second[common]==previous->second[common]) ++common;
+                    changedBytes+=item.second.size()-common;
+                }
+            }
+            for(const auto& item:committed) if(!now.count(item.first)) changedBytes+=4096;
+            maxTransactionBytes=std::max(maxTransactionBytes,changedBytes);
+            if(journalLimit&&changedBytes>journalLimit) poisoned=true;
+            if(failAllCommits||saveCommits==failCommit) poisoned=true;
+            if(poisoned) { error="fixture journal exhausted; transaction requires remount"; return false; }
+            committed=now;
+        } else if(failAllCommits||saveCommits==failCommit) { error="injected save commit failure"; return false; }
+        return true;
     }
     bool commitSd(std::string& error) override { ++sdCommits; if(sdCommits==failSd) { error="injected SD flush failure"; return false; } return true; }
-    bool checkpoint(const char* stage,const std::string& path) override { return !fault||fault(stage,path); }
+    bool checkpoint(const char* stage,const std::string& path) override {
+        if(transactional&&writable&&poisoned&&(std::string(stage)=="save-metadata"||std::string(stage)=="save-write")) return false;
+        return !fault||fault(stage,path);
+    }
 };
 struct Fixture {
     std::string root,store;
@@ -161,7 +213,7 @@ int main() {
         require(f.b.readonlyCapacityQueries==1&&f.b.writableCapacityQueries==1,
                 "real capacity is checked through metadata during readonly preparation and reread before writes");
         require(contents(f.b.targetPath)==f.originalSource,"destination exactly replaced, stale files removed and empty directories retained");
-        require(contents(f.b.sourcePath)==f.originalSource,"original unchanged after restore"); require(f.b.saveCommits==1,"one save commit on successful apply");
+        require(contents(f.b.sourcePath)==f.originalSource,"original unchanged after restore"); require(f.b.saveCommits>1,"save commits bound metadata and closed-file writes");
         require(!f.engine.applyRestore(plan).ok,"confirmed plan cannot apply twice");
         auto recoveries=f.recoveries(); require(recoveries.size()==1&&!recoveries.front().needsRecovery,"applied backup available for explicit revert");
         r=f.engine.recover(recoveries.front()); require(r.ok,"explicit revert succeeds"); require(contents(f.b.targetPath)==f.originalTarget,"rollback restores destination exactly");
@@ -171,6 +223,106 @@ int main() {
     {
         Fixture f(base,"device"); f.b.source.kind=f.b.target.kind=SaveKind::Device; f.b.source.userLow=f.b.source.userHigh=f.b.target.userLow=f.b.target.userHigh=0;
         f.exportGood(); auto plan=f.prepareGood(); require(f.engine.applyRestore(plan).ok,"device saves map by exact title/type/index, no account");
+    }
+    {
+        Fake f; uint64_t budget=123; std::string error;
+        auto metadata=capacityMetadata(f.target,64*1024*1024);
+        for(const int64_t journal:std::vector<int64_t>{-1,0,1,64*1024,128*1024}) {
+            metadata.journalSize=journal;
+            require(!transfer_detail::validatedSaveWriteBudget(f.target,metadata,budget,error)&&budget==0&&!error.empty(),"unknown or unsupported small journal never becomes an unlimited write budget");
+        }
+        metadata.journalSize=256*1024;
+        require(transfer_detail::validatedSaveWriteBudget(f.target,metadata,budget,error)&&budget==96*1024,"small verified journal reserves metadata room and limits a transaction");
+        metadata.journalSize=std::numeric_limits<int64_t>::max();
+        require(transfer_detail::validatedSaveWriteBudget(f.target,metadata,budget,error)&&budget==1024*1024,"huge journal cannot overflow or allow unbounded writes");
+        ++metadata.userLow;
+        require(!transfer_detail::validatedSaveWriteBudget(f.target,metadata,budget,error)&&budget==0,"journal from another save identity cannot authorize writes");
+    }
+    for(unsigned invalid=0;invalid<3;++invalid) {
+        Fixture f(base,"journal-budget-"+std::to_string(invalid)); f.exportGood();
+        if(invalid==0) f.b.journalKnown=false;
+        else f.b.journalSize=invalid==1?0:64*1024;
+        RestorePlan plan;
+        require(!f.engine.prepareRestore(f.exported,f.b.target,plan).ok,"unverified journal rejected in read-only preparation");
+        require(f.b.writeMounts==0&&f.b.saveCommits==0&&contents(f.b.targetPath)==f.originalTarget,"journal rejection does not mutate target");
+        f.b.journalKnown=true; f.b.journalSize=16*1024*1024; plan=f.prepareGood();
+        if(invalid==0) f.b.journalKnown=false;
+        else f.b.journalSize=invalid==1?0:64*1024;
+        auto result=f.engine.applyRestore(plan);
+        require(!result.ok&&!result.recoveryRequired&&f.b.saveCommits==0&&contents(f.b.targetPath)==f.originalTarget,"journal budget reread after confirmation before first mutation");
+        require(fs::exists(f.store+"/backups/"+plan.backupId+"/complete.sha256"),"failed budget check preserves verified backup");
+    }
+    auto prepareLarge=[](Fixture& f,bool emptyTarget) {
+        std::string large(3*1024*1024+31,'A');
+        for(size_t i=0;i<large.size();++i) large[i]=char((i*73+i/8192)%251);
+        put(f.b.sourcePath+"/progress.dat",large); f.originalSource=contents(f.b.sourcePath);
+        if(emptyTarget) { fs::remove_all(f.b.targetPath); fs::create_directories(f.b.targetPath); }
+        else put(f.b.targetPath+"/old.dat",std::string(2*1024*1024+19,'Z'));
+        f.originalTarget=contents(f.b.targetPath);
+        auto result=f.engine.exportSave(f.b.source); require(result.ok,"large fixture exports through unchanged SD path");
+        std::vector<ExportEntry> exported; std::string error;
+        require(f.engine.listExports(exported,error)&&exported.size()==1,"large fixture export verifies");
+        f.exported=exported.front(); f.b.env.mode=SaveEnvironment::EmuMMC;
+        f.b.transactional=true; f.b.journalSize=256*1024; f.b.journalLimit=256*1024;
+        return f.prepareGood();
+    };
+    {
+        Fixture f(base,"bounded-large-file"); const auto plan=prepareLarge(f,false);
+        const auto immutableBackup=contents(f.store+"/backups/"+plan.backupId);
+        auto result=f.engine.applyRestore(plan);
+        require(result.ok,"file larger than journal imports with bounded closed-file commits: "+result.message);
+        require(contents(f.b.targetPath)==f.originalSource,"appended committed chunks preserve every byte and empty directory");
+        require(f.b.saveCommits>30&&f.b.maxTransactionBytes<=f.b.journalLimit,"no save transaction contains the whole large file");
+        require(f.engine.recover(f.recoveries().front()).ok,"large destination backup also recovers with bounded commits");
+        require(contents(f.b.targetPath)==f.originalTarget,"large backup restores exact original after transaction close");
+        require(contents(f.store+"/backups/"+plan.backupId)==immutableBackup,"bounded import/recovery leave backup immutable");
+        require(contents(f.b.sourcePath)==f.originalSource,"bounded commits never modify sysMMC source");
+    }
+    {
+        Fixture f(base,"poisoned-transaction"); const auto plan=prepareLarge(f,false);
+        f.b.failCommit=8;
+        auto result=f.engine.applyRestore(plan);
+        require(!result.ok&&!result.recoveryRequired,"failed mid-file save commit automatically rolls back after fresh mount: "+result.message);
+        require(f.b.freshWriteMounts==2,"rollback obtains a fresh transaction instead of reusing poisoned journal");
+        require(contents(f.b.targetPath)==f.originalTarget,"already committed partial chunks are removed and original backup restored");
+    }
+    {
+        Fixture f(base,"empty-backup-discard"); const auto plan=prepareLarge(f,true);
+        f.b.failCommit=1;
+        auto result=f.engine.applyRestore(plan);
+        require(!result.ok&&!result.recoveryRequired,"empty backup recovers by verifying fresh committed state");
+        require(f.b.freshWriteMounts==2&&f.b.saveCommits==1&&fs::is_empty(f.b.targetPath),"discarded first transaction does not need artificial backup writes");
+    }
+    {
+        Fixture f(base,"partial-commit-restart"); const auto plan=prepareLarge(f,false); bool fired=false;
+        f.b.fault=[&](const char* stage,const std::string&) {
+            if(!fired&&std::string(stage)=="save-committed"&&f.b.saveCommits==8) {
+                fired=true; f.b.env.mode=SaveEnvironment::Unknown; return false;
+            }
+            return true;
+        };
+        auto result=f.engine.applyRestore(plan);
+        require(!result.ok&&result.recoveryRequired,"interruption after a committed chunk cannot report successful import");
+        require(contents(f.b.targetPath)!=f.originalTarget&&contents(f.b.targetPath)!=f.originalSource,"fixture actually persists a partial restore across mount close");
+        require(f.b.freshWriteMounts==1,"changed environment blocks automatic rollback mount");
+        f.b.env.mode=SaveEnvironment::EmuMMC; f.b.fault={};
+        transfer_detail::Engine restarted(f.b,f.store); auto pending=f.recoveries();
+        require(pending.size()==1&&pending[0].needsRecovery&&restarted.recover(pending[0]).ok,"durable journal recovers partial commits after application restart");
+        require(contents(f.b.targetPath)==f.originalTarget,"restart recovery restores complete old large save");
+    }
+    {
+        Fixture f(base,"bounded-rollback-failure"); const auto plan=prepareLarge(f,false); bool fired=false;
+        f.b.fault=[&](const char* stage,const std::string&) {
+            if(!fired&&std::string(stage)=="save-committed"&&f.b.saveCommits==8) {
+                fired=true; f.b.failAllCommits=true; return false;
+            }
+            return true;
+        };
+        auto result=f.engine.applyRestore(plan);
+        require(!result.ok&&result.recoveryRequired,"rollback commit failure after partial import remains recoverable, never successful");
+        require(f.b.freshWriteMounts==2,"failed rollback was attempted in a fresh mount");
+        f.b.fault={}; f.b.failAllCommits=false;
+        require(f.engine.recover(f.recoveries().front()).ok&&contents(f.b.targetPath)==f.originalTarget,"retry restores immutable backup after failed rollback transaction is discarded");
     }
     for(unsigned mode=0;mode<4;++mode) {
         Fixture f(base,"export-gate-"+std::to_string(mode));

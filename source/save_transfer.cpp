@@ -110,7 +110,8 @@ public:
     std::string path;
     explicit Mount(Backend& b):b_(b){}
     bool open(const SaveEntry& s,bool writable,std::string& e) { mounted_=b_.mount(s,writable,path,e); return mounted_; }
-    ~Mount() { if(mounted_) b_.unmount(); }
+    void close() { if(mounted_) b_.unmount(); mounted_=false; path.clear(); }
+    ~Mount() { close(); }
 };
 bool check(Backend& b,const char* stage,const std::string& path,std::string& e) {
     if(b.checkpoint(stage,path)) return true;
@@ -234,6 +235,27 @@ bool snapshot(Backend& b,const std::string& root,const SaveEntry& save,Snapshot&
     out.hash=hashText(manifest(out)); return true;
 }
 bool sameContents(const Snapshot& a,const Snapshot& b) { return a.files==b.files&&a.bytes==b.bytes&&itemText(a)==itemText(b); }
+std::string fileFailure(const char* operation,const std::string& path,uint64_t offset=0) {
+    // Capture before fclose/unmount/another FS call can replace thread-local
+    // fsdevGetLastResult. Native POSIX errno alone loses most FS error details.
+    const int savedErrno=errno;
+#ifdef __SWITCH__
+    const auto rc=fsdevGetLastResult();
+    char code[24]; std::snprintf(code,sizeof(code),"0x%08lx",static_cast<unsigned long>(rc));
+#endif
+    std::string result=std::string(operation)+": "+path+" (byte "+std::to_string(offset)+", errno "+std::to_string(savedErrno);
+#ifdef __SWITCH__
+    result+=", FS "; result+=code;
+#endif
+    return result+"). Se conserva la copia de seguridad.";
+}
+bool closeWrittenFile(FILE*& f,const std::string& path,uint64_t offset,std::string& error) {
+    bool ok=true;
+    if(fflush(f)!=0) { if(error.empty()) error=fileFailure("No se pudo vaciar el archivo",path,offset); ok=false; }
+    if(ok&&fsync(fileno(f))!=0) { if(error.empty()) error=fileFailure("No se pudo confirmar la escritura del archivo",path,offset); ok=false; }
+    if(fclose(f)!=0) { if(error.empty()) error=fileFailure("No se pudo cerrar el archivo",path,offset); ok=false; }
+    f=nullptr; return ok;
+}
 bool flushClose(FILE* f) { bool ok=fflush(f)==0; if(ok&&fsync(fileno(f))!=0) ok=false; if(fclose(f)!=0) ok=false; return ok; }
 bool writeExclusive(Backend& b,const std::string& path,const std::string& data,std::string& error) {
     if(!check(b,"write-metadata",path,error)) return false;
@@ -268,12 +290,70 @@ bool copyItems(Backend& b,const std::string& from,const std::string& to,const Sn
     }
     return true;
 }
+bool commitDestination(Backend& b,const std::string& instance,std::string& error) {
+    return gate(b,SaveEnvironment::EmuMMC,error,instance)&&b.commitSave(error)&&check(b,"save-committed","",error);
+}
+bool copySaveFile(Backend& b,const std::string& from,const std::string& to,uint64_t expected,
+                  uint64_t budget,const std::string& instance,std::string& error) {
+    struct stat st{};
+    if(!pathStat(from,st)||!S_ISREG(st.st_mode)||S_ISLNK(st.st_mode)||st.st_size<0||uint64_t(st.st_size)!=expected) { error="El archivo de la copia cambió antes de restaurarlo."; return false; }
+    FILE* in=fopen(from.c_str(),"rb"); if(!in) { error=fileFailure("No se pudo abrir la copia",from); return false; }
+    int fd=open(to.c_str(),O_WRONLY|O_CREAT|O_EXCL,0600);
+    if(fd<0) { error=fileFailure("No se pudo crear el archivo de destino",to); fclose(in); return false; }
+    FILE* out=fdopen(fd,"wb");
+    if(!out) { error=fileFailure("No se pudo preparar el archivo de destino",to); close(fd); fclose(in); return false; }
+    std::array<uint8_t,65536> buffer{}; uint64_t total=0,uncommitted=0; bool ok=true;
+    do {
+        while(total<expected&&uncommitted<budget) {
+            const auto n=static_cast<size_t>(std::min<uint64_t>(buffer.size(),std::min(expected-total,budget-uncommitted)));
+            const auto got=fread(buffer.data(),1,n,in);
+            if(got!=n) { error=ferror(in)?fileFailure("No se pudo leer la copia",from,total):"La copia terminó antes de lo esperado."; ok=false; break; }
+            if(!gate(b,SaveEnvironment::EmuMMC,error,instance)||!check(b,"copy-chunk",to,error)||!check(b,"save-write",std::to_string(n),error)) { ok=false; break; }
+            if(fwrite(buffer.data(),1,n,out)!=n) { error=fileFailure("No se pudo escribir el archivo de destino",to,total); ok=false; break; }
+            total+=n; uncommitted+=n;
+        }
+        if(ok&&total==expected) {
+            const int extra=fgetc(in);
+            if(extra!=EOF||ferror(in)) { error=ferror(in)?fileFailure("No se pudo terminar de leer la copia",from,total):"La copia cambió de tamaño durante la restauración."; ok=false; }
+        }
+        // No save commit with a writable file handle open. fsync only calls
+        // fsFileFlush on Switch; the explicit filesystem commit frees journal.
+        if(!closeWrittenFile(out,to,total,error)) ok=false;
+        if(!ok||!commitDestination(b,instance,error)) { ok=false; break; }
+        uncommitted=0;
+        if(total==expected) break;
+        if(!pathStat(to,st)||!S_ISREG(st.st_mode)||S_ISLNK(st.st_mode)||st.st_size<0||uint64_t(st.st_size)!=total) { error="El archivo de destino cambió entre tramos confirmados."; ok=false; break; }
+        fd=open(to.c_str(),O_WRONLY); // Existing file: never create, truncate or append.
+        if(fd<0) { error=fileFailure("No se pudo reabrir el archivo de destino",to,total); ok=false; break; }
+        if(lseek(fd,static_cast<off_t>(total),SEEK_SET)!=static_cast<off_t>(total)) { error=fileFailure("No se pudo continuar en la posición confirmada",to,total); close(fd); ok=false; break; }
+        out=fdopen(fd,"wb"); // fdopen does not truncate an already-open descriptor.
+        if(!out) { error=fileFailure("No se pudo continuar el archivo de destino",to,total); close(fd); ok=false; break; }
+    } while(ok);
+    if(out) { std::string cleanup; closeWrittenFile(out,to,total,cleanup); }
+    fclose(in); return ok;
+}
+bool copySaveItems(Backend& b,const std::string& from,const std::string& to,const Snapshot& data,
+                   uint64_t budget,const std::string& instance,std::string& error) {
+    if(!directory(from)||!directory(to)) { error="La copia o el destino no están disponibles."; return false; }
+    for(const auto& item:data.items) {
+        if(!check(b,"copy-entry",item.path,error)||!gate(b,SaveEnvironment::EmuMMC,error,instance)) return false;
+        const auto dest=childPath(to,item.path);
+        if(item.directory) {
+            if(!check(b,"save-metadata",item.path,error)) return false;
+            if(mkdir(dest.c_str(),0700)!=0) { error=fileFailure("No se pudo crear una carpeta de destino",dest); return false; }
+            if(!commitDestination(b,instance,error)) return false;
+        } else if(!copySaveFile(b,childPath(from,item.path),dest,item.size,budget,instance,error)) return false;
+    }
+    return true;
+}
 bool clearContents(Backend& b,const std::string& root,std::string& error,const std::string& instance) {
     std::vector<Item> items; if(!scanItems(root,"",items,error)) return false;
     for(auto it=items.rbegin();it!=items.rend();++it) {
         if(!gate(b,SaveEnvironment::EmuMMC,error,instance)||!check(b,"remove-entry",it->path,error)) return false;
         const auto path=childPath(root,it->path);
-        if((it->directory?rmdir(path.c_str()):unlink(path.c_str()))!=0) { error="No se pudo sustituir un archivo del destino."; return false; }
+        if(!check(b,"save-metadata",it->path,error)) return false;
+        if((it->directory?rmdir(path.c_str()):unlink(path.c_str()))!=0) { error=fileFailure("No se pudo sustituir un archivo del destino",path); return false; }
+        if(!commitDestination(b,instance,error)) return false;
     }
     return true;
 }
@@ -393,8 +473,10 @@ bool pendingForSave(const std::string& root,const SaveEntry& target,std::string&
     return false;
 }
 TransferResult failure(const std::string& error,const std::string& id={},bool recovery=false) { TransferResult r; r.message=error.empty()?"No se pudo completar la operación; no continúes hasta revisar el resultado.":error; r.id=id; r.recoveryRequired=recovery; return r; }
-bool replaceFrom(Backend& b,const std::string& dest,const std::string& source,const Snapshot& data,const SaveEntry& target,const std::string& instance,std::string& error) {
-    if(!clearContents(b,dest,error,instance)||!copyItems(b,source,dest,data,error,SaveEnvironment::EmuMMC,instance)) return false;
+bool replaceFrom(Backend& b,const std::string& dest,const std::string& source,const Snapshot& data,const SaveEntry& target,
+                 uint64_t budget,const std::string& instance,std::string& error) {
+    if(!budget) { error="No se ha comprobado un presupuesto de escritura para la partida."; return false; }
+    if(!clearContents(b,dest,error,instance)||!copySaveItems(b,source,dest,data,budget,instance,error)) return false;
     Snapshot actual; if(!snapshot(b,dest,target,actual,error,SaveEnvironment::EmuMMC,instance)||!sameContents(data,actual)) { if(error.empty()) error="La partida restaurada no coincide con la copia."; return false; }
     if(!gate(b,SaveEnvironment::EmuMMC,error,instance)||!b.commitSave(error)) return false;
     Snapshot committed;
@@ -404,8 +486,21 @@ bool replaceFrom(Backend& b,const std::string& dest,const std::string& source,co
 bool restoreBackup(Backend& b,const std::string& root,Journal& journal,const std::string& destination,std::string& error) {
     Snapshot backup;
     if(!readSnapshot(b,root+"/backups",journal.plan.backupId,backup,error)||backup.hash!=journal.plan.backupSha256||!equalSave(backup.save,journal.plan.destination)) { error="La copia de seguridad no se pudo verificar. No se intentará restaurarla."; return false; }
+    // Caller always supplies a fresh mount. Closing a failed transaction may
+    // already have discarded all uncommitted changes; don't rewrite a matching
+    // (possibly empty) backup just to report that recovery succeeded.
+    Snapshot current;
+    if(!snapshot(b,destination,journal.plan.destination,current,error,SaveEnvironment::EmuMMC,journal.instance)) return false;
+    if(sameContents(current,backup)) {
+        return appendJournal(b,root,journal,"rolling-back",error)&&appendJournal(b,root,journal,"restored",error);
+    }
+    uint64_t capacity=0,budget=0;
+    if(!b.saveCapacity(capacity,error)||backup.bytes>capacity||!b.saveWriteBudget(budget,error)) {
+        if(error.empty()) error="La partida de destino ya no tiene capacidad comprobada para recuperar la copia.";
+        return false;
+    }
     if(!appendJournal(b,root,journal,"rolling-back",error)) return false;
-    if(!replaceFrom(b,destination,root+"/backups/"+journal.plan.backupId+"/data",backup,journal.plan.destination,journal.instance,error)) return false;
+    if(!replaceFrom(b,destination,root+"/backups/"+journal.plan.backupId+"/data",backup,journal.plan.destination,budget,journal.instance,error)) return false;
     return appendJournal(b,root,journal,"restored",error);
 }
 } // namespace
@@ -427,6 +522,20 @@ bool validatedSaveCapacity(const SaveEntry& mounted,const SaveCapacityMetadata& 
     // files. The response is re-read before applying, never cached in a plan.
     bytes=static_cast<uint64_t>(metadata.dataSize);
     return true;
+}
+bool validatedSaveWriteBudget(const SaveEntry& mounted,const SaveCapacityMetadata& metadata,
+                              uint64_t& bytes,std::string& error) {
+    bytes=0; uint64_t capacity=0;
+    if(!validatedSaveCapacity(mounted,metadata,capacity,error)) return false;
+    const uint64_t journal=static_cast<uint64_t>(metadata.journalSize);
+    // Conservative policy, not a claim about currently free journal blocks.
+    // Leave space for metadata/copy-on-write and never write more than 1 MiB
+    // between closed-file commits. Small/unknown journals are not guessed.
+    const uint64_t reserve=std::max<uint64_t>(64*1024,std::min<uint64_t>(1024*1024,journal/4));
+    if(journal<=reserve) { error="El journal de esta partida es nulo o demasiado pequeño para el método de escritura comprobado. No se modificará."; return false; }
+    const uint64_t budget=(std::min<uint64_t>(1024*1024,(journal-reserve)/2)/(16*1024))*(16*1024);
+    if(budget<64*1024) { error="El journal de esta partida no permite el presupuesto mínimo de escritura. No se modificará."; return false; }
+    bytes=budget; return true;
 }
 
 std::string destinationConfigFingerprint(uint64_t device,const std::string& text,std::string& profilePath) {
@@ -477,8 +586,9 @@ TransferResult Engine::prepareRestore(const ExportEntry& exported,const SaveEntr
     Snapshot source; if(!readSnapshot(backend_,root_+"/exports",exported.id,source,e)||source.hash!=exported.manifestSha256||!equalSave(source.save,exported.source)) return failure(e.empty()?"La exportación cambió desde que fue seleccionada.":e);
     const auto env=backend_.environment();
     Mount mount(backend_); if(!mount.open(target,false,e)) return failure(e);
-    uint64_t capacity=0;
+    uint64_t capacity=0,budget=0;
     if(!backend_.saveCapacity(capacity,e)||source.bytes>capacity) return failure(e.empty()?"Los datos exportados superan la capacidad de la partida de destino. No se creará ni ampliará una partida automáticamente.":e);
+    if(!backend_.saveWriteBudget(budget,e)) return failure(e);
     std::string backupId; Snapshot backup;
     if(!createSnapshot(backend_,root_+"/backups",mount.path,target,backupId,backup,e,SaveEnvironment::EmuMMC,env.instanceId)) return failure(e);
     Journal j; j.instance=env.instanceId; j.plan.exported=exportEntry(exported.id,source); j.plan.destination=target; j.plan.backupId=backupId; j.plan.backupSha256=backup.hash; j.plan.backupBytes=backup.bytes; j.plan.backupVerified=true;
@@ -495,16 +605,23 @@ TransferResult Engine::applyRestore(const RestorePlan& plan) {
     if(!readSnapshot(backend_,root_+"/exports",j.plan.exported.id,source,e)||source.hash!=j.plan.exported.manifestSha256||!equalSave(source.save,j.plan.exported.source)||
        !readSnapshot(backend_,root_+"/backups",j.plan.backupId,backup,e)||backup.hash!=j.plan.backupSha256||!equalSave(backup.save,j.plan.destination)) return failure(e.empty()?"La exportación o la copia previa cambió; no se importará.":e);
     Mount mount(backend_); if(!mount.open(j.plan.destination,true,e)) return failure(e);
-    uint64_t capacity=0;
+    uint64_t capacity=0,budget=0;
     if(!backend_.saveCapacity(capacity,e)||source.bytes>capacity) return failure(e.empty()?"La capacidad del destino ya no admite la partida exportada.":e);
+    if(!backend_.saveWriteBudget(budget,e)) return failure(e);
     Snapshot current; if(!snapshot(backend_,mount.path,j.plan.destination,current,e,SaveEnvironment::EmuMMC,j.instance)||!sameContents(current,backup)) return failure(e.empty()?"La partida de destino cambió después de preparar la copia. Vuelve a preparar la importación.":e);
     if(!appendJournal(backend_,root_,j,"applying",e)) return failure(e,j.plan.id);
-    if(replaceFrom(backend_,mount.path,root_+"/exports/"+j.plan.exported.id+"/data",source,j.plan.destination,j.instance,e)) {
+    if(replaceFrom(backend_,mount.path,root_+"/exports/"+j.plan.exported.id+"/data",source,j.plan.destination,budget,j.instance,e)) {
         if(!appendJournal(backend_,root_,j,"applied",e)) return failure("Se escribió la partida, pero no se pudo cerrar el diario. Usa Recuperar antes de jugar. "+e,j.plan.id,true);
         TransferResult r; r.ok=true; r.id=j.plan.id; r.message="Partida importada y confirmada en emuMMC. La copia anterior se conserva para Recuperar. Algunos juegos vinculan datos internos a una cuenta; compruébala al iniciar."; return r;
     }
     const auto cause=e; std::string rollbackError;
-    if(restoreBackup(backend_,root_,j,mount.path,rollbackError)) return failure("La importación falló y se restauró la partida anterior. "+cause,j.plan.id);
+    // Never attempt rollback inside the failed/full journal transaction.
+    // Unmount does not commit. Revalidate the same save and environment before
+    // opening a fresh transaction; already committed chunks remain recoverable.
+    mount.close();
+    if(gate(backend_,SaveEnvironment::EmuMMC,rollbackError,j.instance)&&existsNow(backend_,j.plan.destination,rollbackError)&&
+       mount.open(j.plan.destination,true,rollbackError)&&restoreBackup(backend_,root_,j,mount.path,rollbackError))
+        return failure("La importación falló y se restauró la partida anterior. "+cause,j.plan.id);
     std::string journalError; appendJournal(backend_,root_,j,"recovery-required",journalError);
     return failure("No se pudo completar la importación ni recuperar automáticamente. No abras el juego; usa Recuperar. "+cause+" "+rollbackError,j.plan.id,true);
 }
@@ -658,8 +775,8 @@ public:
         mounted_=true; writable_=writable; mountedSave_=save; path="nmsvsave:/"; return true;
     }
     void unmount() override { if(mounted_) fsdevUnmountDevice("nmsvsave"); mounted_=false; writable_=false; mountedSave_={}; }
-    bool saveCapacity(uint64_t& bytes,std::string& error) override {
-        bytes=0; error.clear(); auto* fs=mounted_?fsdevGetDeviceFileSystem("nmsvsave"):nullptr;
+    bool readCapacityMetadata(transfer_detail::SaveCapacityMetadata& metadata,std::string& error) {
+        metadata={}; error.clear(); auto* fs=mounted_?fsdevGetDeviceFileSystem("nmsvsave"):nullptr;
         if(!fs) { error="No hay una partida montada para comprobar su capacidad."; return false; }
         // GetTotalSpace on a read-only save FS is unsupported (FS 6371,
         // 0x0031C602). Query the existing save's extra data through fsp-srv
@@ -669,14 +786,21 @@ public:
         const auto rc=fsReadSaveDataFileSystemExtraDataBySaveDataSpaceId(
             &extra,sizeof(extra),FsSaveDataSpaceId_User,mountedSave_.saveDataId);
         if(R_FAILED(rc)) { error="No se pudo leer la capacidad real de la partida de destino: "+resultCode(rc); return false; }
-        transfer_detail::SaveCapacityMetadata metadata;
         metadata.titleId=extra.attr.application_id;
         metadata.userLow=extra.attr.uid.uid[0]; metadata.userHigh=extra.attr.uid.uid[1];
         metadata.systemSaveDataId=extra.attr.system_save_data_id;
         metadata.kind=static_cast<SaveKind>(extra.attr.save_data_type);
         metadata.rank=extra.attr.save_data_rank; metadata.index=extra.attr.save_data_index;
         metadata.dataSize=extra.data_size; metadata.journalSize=extra.journal_size;
-        return transfer_detail::validatedSaveCapacity(mountedSave_,metadata,bytes,error);
+        return true;
+    }
+    bool saveCapacity(uint64_t& bytes,std::string& error) override {
+        bytes=0; transfer_detail::SaveCapacityMetadata metadata;
+        return readCapacityMetadata(metadata,error)&&transfer_detail::validatedSaveCapacity(mountedSave_,metadata,bytes,error);
+    }
+    bool saveWriteBudget(uint64_t& bytes,std::string& error) override {
+        bytes=0; transfer_detail::SaveCapacityMetadata metadata;
+        return readCapacityMetadata(metadata,error)&&transfer_detail::validatedSaveWriteBudget(mountedSave_,metadata,bytes,error);
     }
     bool commitSave(std::string& error) override {
         if(!mounted_||!writable_) { error="No hay un destino abierto para confirmar."; return false; }
@@ -694,6 +818,7 @@ public:
     bool mount(const SaveEntry&,bool,std::string&,std::string& error) override { error="Servicio FS no disponible."; return false; }
     void unmount() override {}
     bool saveCapacity(uint64_t&,std::string& error) override { error="Servicio FS no disponible."; return false; }
+    bool saveWriteBudget(uint64_t&,std::string& error) override { error="Servicio FS no disponible."; return false; }
     bool commitSave(std::string& error) override { error="Servicio FS no disponible."; return false; }
     bool commitSd(std::string& error) override { error="SD de Switch no disponible."; return false; }
 };

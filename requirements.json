@@ -1,6 +1,6 @@
 {
   "name": "ninmagic-saves",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "target": "Nintendo Switch homebrew NRO under Atmosphere",
   "primary_required_workflow": [
     "Start from emuMMC Homebrew Menu",
@@ -31,7 +31,7 @@
   "github_repository": "ANE-JV/ninmagic-saves",
   "updates": "Own public HTTPS channel; network updater only in verified emuMMC",
   "ban_immunity_guaranteed": false,
-  "status": "0.2.3 beta compiled and host-tested; physical-console validation pending",
+  "status": "0.2.4 beta compiled and host-tested; physical-console validation pending",
   "universal_compatibility_verified": false,
   "hardware_tested": false,
   "do_not_publish": [

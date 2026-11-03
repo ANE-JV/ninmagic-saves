@@ -1,20 +1,24 @@
-# NinMagic Saves 0.2.3 beta
+# NinMagic Saves 0.2.4 beta
 
-**0.2.3 beta — transferencia de partidas mediante reinicio entre CFW sysMMC y emuMMC. Pendiente de validación en consola.**
+**0.2.4 beta — transferencia de partidas mediante reinicio entre CFW sysMMC y emuMMC. Pendiente de validación en consola.**
 
-[Descargar ZIP 0.2.3 beta](https://raw.githubusercontent.com/ANE-JV/ninmagic-saves/main/versions/v0.2.3/NinMagic-Saves-0.2.3.zip)
+[Descargar ZIP 0.2.4 beta](https://raw.githubusercontent.com/ANE-JV/ninmagic-saves/main/versions/v0.2.4/NinMagic-Saves-0.2.4.zip)
 
-La misma aplicación se utiliza en los dos entornos. En CFW sysMMC exporta partidas originales a la microSD con aperturas de solo lectura. En emuMMC permite importar esas copias en una partida del mismo juego, eligiendo el usuario de destino y respaldando antes su progreso actual. No fusiona dos progresos.
+La misma aplicación se utiliza en los dos entornos. En CFW sysMMC exporta partidas originales a la microSD con aperturas de solo lectura. En emuMMC permite importar esas copias en una partida del mismo juego, eligiendo la partida de destino y, cuando pertenece a un usuario, su perfil. Antes se respalda el progreso actual del destino. No fusiona dos progresos.
 
 Este recorrido requiere ejecutar Atmosphère sobre la memoria original durante la exportación. El sistema original stock no ejecuta el NRO. No se modifica el código de Atmosphère ni se instala un lector físico o módulo adicional. No se ofrece invisibilidad ante Nintendo ni garantía contra baneos.
 
-La 0.2.3 corrige la consulta de capacidad de una partida abierta en solo lectura al preparar el respaldo del destino. La versión del juego y el nombre del usuario no bloquean la importación; se elige una partida existente del mismo Title ID, tipo e índice.
+La 0.2.4 confirma las escrituras por tramos según el espacio temporal (journal) declarado por el guardado, en lugar de acumular toda la importación en una sola transacción. Si falla, vuelve a abrir el destino antes de recuperar el respaldo; si ya coincide con él, termina la recuperación sin reescribirlo. Añade detalles del error de archivos y distingue **Partida de usuario** de **Datos compartidos de la consola**. La compilación y las pruebas con fallos simulados han pasado; esta corrección aún requiere prueba en consola.
+
+Si una importación anterior quedó pendiente, actualiza, cierra y vuelve a abrir NinMagic Saves en emuMMC. Usa **Recuperar una copia previa** para ese juego antes de volver a importar o jugar. Conserva las exportaciones y los respaldos; la 0.2.4 mantiene sus formatos.
+
+La 0.2.3 corrigió la consulta de capacidad de una partida abierta en solo lectura al preparar el respaldo del destino. La versión del juego y el nombre del usuario no bloquean la importación; se elige una partida existente del mismo Title ID, tipo e índice.
 
 La 0.2.2 corrigió la lectura de títulos decorativos de Hekate que podían provocar «Título INI sin cierre». Conserva la configuración existente y añade archivo y línea a los errores de sintaxis. La red continúa siendo informativa.
 
 ## Instalación
 
-Extrae NinMagic-Saves-0.2.3.zip en la raíz de la microSD, también si utilizas un descargador AIO configurado para extraer en esa raíz. El ejecutable queda en switch/NinMagicSaves/NinMagic-Saves.nro.
+Extrae NinMagic-Saves-0.2.4.zip en la raíz de la microSD, también si utilizas un descargador AIO configurado para extraer en esa raíz. El ejecutable queda en switch/NinMagicSaves/NinMagic-Saves.nro.
 
 El paquete incluye el icono SAVES en magenta/cian neón, los recursos interiores y el canal de actualización propio. No incluye overlays, partidas, claves, imágenes NAND, módulos de Atmosphère ni cambios de arranque activos.
 
@@ -42,6 +46,8 @@ Activa modo avión y desconecta Ethernet **antes de arrancar CFW sysMMC**. Activ
 9. Revisa juego, origen, destino y respaldo. Confirma para importar.
 10. Comprueba el progreso dentro del juego. Usa la recuperación de respaldos si necesitas regresar a la partida anterior.
 
+Un juego puede tener ambas clases de guardado. **Partida de usuario** pertenece a un perfil; puedes elegir otro perfil de destino. **Datos compartidos de la consola** no pertenecen a un usuario individual y sólo se importan sobre datos compartidos del mismo juego. Son copias separadas: transferir una no transfiere la otra ni convierte o mezcla sus archivos.
+
 No apagues la consola durante una copia o importación. Si una operación queda interrumpida, conserva la carpeta de datos y revisa la recuperación antes de volver a jugar o importar.
 
 ## Modelos y configuración
@@ -59,6 +65,7 @@ El reinicio automático con destino de una sola vez depende del hardware y carga
 - Los archivos exportados se verifican con SHA-256. El respaldo del destino se verifica antes del reemplazo.
 - El destino se vuelve a comprobar después de la revisión. Si cambió, hay que preparar otra importación.
 - Los registros y copias permiten recuperar una importación interrumpida. No se restaura automáticamente al abrir el NRO.
+- La importación y la recuperación cierran el archivo antes de confirmar cada tramo. Si el journal es desconocido o demasiado pequeño para el presupuesto conservador admitido, se detiene antes de modificar el destino. Ese presupuesto no garantiza que el sistema disponga de espacio suficiente en todas las condiciones.
 - Las copias de transferencia pueden importarse en otra consola. La recuperación de un respaldo de destino queda vinculada a su entorno original para evitar restauraciones accidentales en otra emuMMC.
 - Conserva config/NinMagicSaves/ mientras haya operaciones pendientes o respaldos que quieras mantener.
 
@@ -66,7 +73,7 @@ El reinicio automático con destino de una sola vez depende del hardware y carga
 
 Canal independiente: <https://raw.githubusercontent.com/ANE-JV/ninmagic-saves/main/update.txt>.
 
-Para pasar de una versión anterior a la 0.2.3, utiliza Actualizar dentro de NinMagic Saves en emuMMC; no hace falta instalarla por MTP. Desde ese mismo apartado puedes consultar y descargar las próximas versiones. Se comprueban identidad del NRO, versión, tamaño y SHA-256 antes de pedir confirmación. Se conserva el ejecutable anterior. Cierra y vuelve a abrir la aplicación después de instalar.
+Para pasar de una versión anterior a la 0.2.4, utiliza Actualizar dentro de NinMagic Saves en emuMMC; no hace falta instalarla por MTP. Desde ese mismo apartado puedes consultar y descargar las próximas versiones. Se comprueban identidad del NRO, versión, tamaño y SHA-256 antes de pedir confirmación. Se conserva el ejecutable anterior. Cierra y vuelve a abrir la aplicación después de instalar.
 
 **El actualizador de red está deshabilitado en sysMMC y en entornos no identificados.** Una consulta fallida se muestra como error, no como «última versión».
 

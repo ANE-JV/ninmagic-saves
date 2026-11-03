@@ -1,6 +1,6 @@
-# Reinicio entre emuMMC y CFW sysMMC — 0.2.3 beta
+# Reinicio entre emuMMC y CFW sysMMC — 0.2.4 beta
 
-Implementación de NinMagic Saves 0.2.3 beta. Las pruebas con archivos sintéticos y la compilación no sustituyen la validación del recorrido completo en una consola real. Las pruebas de escritorio descritas aquí no solicitan reinicios físicos.
+Implementación de NinMagic Saves 0.2.4 beta. Las pruebas con archivos sintéticos y la compilación no sustituyen la validación del recorrido completo en una consola real. Las pruebas de escritorio descritas aquí no solicitan reinicios físicos.
 
 ## Qué hace
 
@@ -62,7 +62,7 @@ En Erista se modifica sólo una copia en RAM del bloque `boot_cfg` en 0x94. Se b
 
 La confirmación final vuelve a comprobar el entorno, que no haya un juego abierto, los contenidos INI y el payload. Un cambio en el destino o en la configuración invalida la revisión. La red se consulta para informar; un estado conectado o desconocido no invalida el plan ni impide continuar tras leer el aviso. El cliente usa el puerto oficial `bpc:ams`, comando 65001, y `spsmShutdown(true)`. Si el reinicio comunica un error después de preparar el payload, intenta retirar la selección temporal restaurando en RAM el payload revisado sin parchear. Nunca escribe el payload de la SD.
 
-No hay un driver para leer NAND desde emuMMC. El código de reinicio no enumera ni importa partidas. La exportación/importación pertenece al módulo de transferencia, y sólo comienza después de comprobar la NAND en la nueva ejecución. La importación exige el mismo Title ID, tipo e índice de guardado, con destino existente y respaldo verificado; admite usuarios y versiones del juego distintos. No convierte formatos: una versión antigua del juego puede no reconocer un guardado más nuevo.
+No hay un driver para leer NAND desde emuMMC. El código de reinicio no enumera ni importa partidas. La exportación/importación pertenece al módulo de transferencia, y sólo comienza después de comprobar la NAND en la nueva ejecución. La importación exige el mismo Title ID, tipo e índice de guardado, con destino existente y respaldo verificado; admite usuarios y versiones del juego distintos. Las partidas de usuario y los datos compartidos de la consola se muestran y transfieren por separado; no se mezclan ni convierten entre tipos. No convierte formatos: una versión antigua del juego puede no reconocer un guardado más nuevo.
 
 ## Límites de seguridad y compatibilidad
 

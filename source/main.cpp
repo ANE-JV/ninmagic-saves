@@ -98,10 +98,11 @@ void applyEnvironment(View&v){
     if(v.environment==UiEnvironment::Unknown)v.environmentDetail="No se pudo confirmar de forma coherente el entorno. No se abrirán partidas ni se iniciará la red.";
     if(v.environment==UiEnvironment::SysMmc)v.environmentDetail="Antes de exportar, activa modo avión en el sistema original y desconecta Ethernet. La detección de red es informativa; no impide continuar.";
 }
-std::string profile(const SaveEntry&s){return s.userName.empty()?(s.kind==SaveKind::Device?"Partida del dispositivo":"Perfil sin nombre disponible"):s.userName;}
+std::string profile(const SaveEntry&s){return s.kind==SaveKind::Device?"Datos compartidos de la consola":s.userName.empty()?"Perfil sin nombre disponible":s.userName;}
+std::string saveSubtitle(const SaveEntry&s){return s.kind==SaveKind::Device?"Datos compartidos de la consola":"Partida de usuario / "+profile(s);}
 std::string game(const SaveEntry&s){return s.gameName.empty()?"Juego "+transferTitleId(s.titleId):s.gameName;}
-std::string accountIdentity(const SaveEntry&s){return s.kind==SaveKind::Device?"Partida compartida por el dispositivo":"UID: "+transferTitleId(s.userLow)+transferTitleId(s.userHigh);}
-UiRow saveRow(const SaveEntry&s){return {game(s),profile(s),"Title ID: "+transferTitleId(s.titleId)+". Perfil: "+profile(s)+". "+accountIdentity(s)+". Save ID: "+transferTitleId(s.saveDataId),false};}
+std::string accountIdentity(const SaveEntry&s){return s.kind==SaveKind::Device?"Tipo: dispositivo; sin perfil individual":"Partida de usuario | UID: "+transferTitleId(s.userLow)+transferTitleId(s.userHigh);}
+UiRow saveRow(const SaveEntry&s){return {game(s),saveSubtitle(s),"Title ID: "+transferTitleId(s.titleId)+". "+(s.kind==SaveKind::Device?accountIdentity(s):"Perfil: "+profile(s)+". "+accountIdentity(s))+". Save ID: "+transferTitleId(s.saveDataId),false};}
 void moveSelection(View&v,u64 buttons){
     const size_t count=v.screen==Screen::Home?homeActions(v.environment).size():v.rows.size();if(!count){v.selected=0;return;}
     if(buttons&(HidNpadButton_Down|HidNpadButton_StickLDown))v.selected=(v.selected+1)%count;
@@ -141,16 +142,16 @@ int main(int argc,char**argv){
             else switch(job.kind){
                 case JobKind::Inspect:view.recoveryError=job.recoveryError;view.screen=Screen::Home;view.selected=0;break;
                 case JobKind::Sources:
-                    sources=std::move(job.saves);view.rows.clear();for(const auto&s:sources)view.rows.push_back(saveRow(s));view.selected=0;view.transferDetail="No hay partidas de usuario o de dispositivo disponibles en este sistema original.";view.screen=Screen::Sources;break;
+                    sources=std::move(job.saves);view.rows.clear();for(const auto&s:sources)view.rows.push_back(saveRow(s));view.selected=0;view.transferDetail="No hay partidas de usuario ni datos compartidos disponibles en este sistema original.";view.screen=Screen::Sources;break;
                 case JobKind::Exports:
-                    exports=std::move(job.exports);view.rows.clear();for(const auto&e:exports){auto row=saveRow(e.source);row.subtitle=profile(e.source)+" / "+std::to_string(e.files)+" archivos";row.detail+=". Copia: "+e.id;view.rows.push_back(std::move(row));}view.selected=0;view.transferDetail=!job.error.empty()?job.error:exports.empty()?"Todavía no hay copias exportadas. Usa Traer partidas originales y exporta desde sysMMC CFW.":"";view.screen=Screen::Imports;break;
+                    exports=std::move(job.exports);view.rows.clear();for(const auto&e:exports){auto row=saveRow(e.source);row.subtitle=saveSubtitle(e.source)+" / "+std::to_string(e.files)+" archivos";row.detail+=". Copia: "+e.id;view.rows.push_back(std::move(row));}view.selected=0;view.transferDetail=!job.error.empty()?job.error:exports.empty()?"Todavía no hay copias exportadas. Usa Traer partidas originales y exporta desde sysMMC CFW.":"";view.screen=Screen::Imports;break;
                 case JobKind::Targets:
-                    targets=std::move(job.saves);view.rows.clear();for(const auto&s:targets)view.rows.push_back(saveRow(s));view.selected=0;view.transferDetail="No hay una partida de destino existente para el mismo Title ID y tipo. Inicia ese juego en emuMMC con la cuenta elegida, crea una partida, ciérralo y vuelve aquí.";view.screen=Screen::Targets;break;
+                    targets=std::move(job.saves);view.rows.clear();for(const auto&s:targets)view.rows.push_back(saveRow(s));view.selected=0;view.transferDetail=job.selectedExport.source.kind==SaveKind::Device?"No hay datos compartidos de destino para el mismo Title ID y tipo. Inicia ese juego en emuMMC, crea su guardado, ciérralo y vuelve aquí.":"No hay una partida de usuario de destino para el mismo Title ID y tipo. Inicia ese juego en emuMMC con la cuenta elegida, crea una partida, ciérralo y vuelve aquí.";view.screen=Screen::Targets;break;
                 case JobKind::PrepareImport:
                     if(job.importPlan.backupVerified)showImportReview(view,job.importPlan);else {view.message="No se pudo verificar el backup del destino. La sustitución no está disponible.";view.success=false;view.screen=Screen::Result;}
                         break;
                 case JobKind::Recoveries:
-                    recoveries=std::move(job.recoveries);view.rows.clear();for(const auto&r:recoveries){auto row=saveRow(r.destination);row.subtitle=profile(r.destination)+" / "+r.state;row.detail="Copia previa: "+r.backupId+". Se restaurará el estado anterior a esta importación; se perderán cambios posteriores.";view.rows.push_back(std::move(row));}view.selected=0;view.transferDetail="No hay copias previas de importaciones realizadas por NinMagic Saves.";view.screen=Screen::Backups;break;
+                    recoveries=std::move(job.recoveries);view.rows.clear();for(const auto&r:recoveries){auto row=saveRow(r.destination);row.subtitle=saveSubtitle(r.destination)+" / "+r.state;row.detail="Copia previa: "+r.backupId+". Se restaurará el estado anterior a esta importación; se perderán cambios posteriores.";view.rows.push_back(std::move(row));}view.selected=0;view.transferDetail="No hay copias previas de importaciones realizadas por NinMagic Saves.";view.screen=Screen::Backups;break;
                 case JobKind::ReviewReboot:case JobKind::PrepareAccess:showReboot(view);break;
                 case JobKind::CheckUpdate:view.update=std::move(job.update);view.updateRecord=std::move(job.updateRecord);view.updateError=job.error;view.queryComplete=true;view.screen=Screen::Update;break;
                 case JobKind::PrepareUpdate:view.update=std::move(job.update);view.screen=Screen::ConfirmUpdate;break;

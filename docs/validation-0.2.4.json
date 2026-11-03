@@ -1,0 +1,44 @@
+{
+  "version": "0.2.4",
+  "date": "2026-11-03",
+  "nro_sha256": "a849b815d04988e545d5b6c30de73338c60f0c62fb77b36ff60a109baf44228f",
+  "nro_bytes": 2050033,
+  "switch_build": "devkitA64/libnx: passed",
+  "nro_resources": "NACP identity/version, icon, RomFS font/logo hashes verified",
+  "change": "Bound destination transactions using verified save journal metadata. Close writable file handles before each save commit. Remount after failure before rollback. Compare a fresh destination with its verified backup before rewriting. Distinguish account and device saves in the UI.",
+  "host_suites": {
+    "self_updater": {"scenarios": 76, "checks": 747, "passed": true},
+    "https": {"checks": 30, "passed": true},
+    "ui_environment_policy": {"checks": 20, "passed": true},
+    "save_transfer": {"checks": 1564, "passed": true},
+    "reboot_workflow": {"passed": true, "fixtures": "synthetic", "network_combinations": 32},
+    "archived_reader_client": {"checks": 236, "passed": true, "linked_into_nro": false},
+    "archived_reader_probe": {"passed": true, "linked_into_nro": false}
+  },
+  "transaction_checks": [
+    "positive conservative budget from identity-validated journal metadata before first mutation",
+    "unknown or unsupported small journal rejected before destination deletion",
+    "file larger than journal copied with bounded closed-file commits",
+    "directory operations committed individually",
+    "failed transaction discarded on unmount before automatic rollback",
+    "durable recovery after partial commits and application restart",
+    "rollback failure preserves immutable backup for later retry",
+    "fresh destination matching empty backup needs no rewrite",
+    "source read-only and exact title/type/index/rank matching preserved"
+  ],
+  "journal_budget_limit": "Conservative policy; not a measurement or guarantee of currently free journal blocks.",
+  "existing_export_format_changed": false,
+  "existing_backup_format_changed": false,
+  "existing_transaction_format_changed": false,
+  "ui_previews": "0.2.4 account/device export list and both import confirmation previews generated and visually checked without clipping.",
+  "independent_review": "No blocking findings in bounded writes, handle closure, remount rollback, identity gates or compatibility with 0.2.3 records.",
+  "hardware_tested": false,
+  "save_import_tested_on_console": false,
+  "universal_compatibility_verified": false,
+  "note": "All host suites and native build passed. Console inspection was read-only. No MTP installation, save mutation or reboot performed; user updates through the app. The previous native error lacked an FS result, so journal exhaustion is a hypothesis rather than a confirmed incident code.",
+  "references": [
+    "https://github.com/switchbrew/libnx/blob/master/nx/source/runtime/devices/fs_dev.c",
+    "https://github.com/switchbrew/libnx/blob/master/nx/include/switch/runtime/devices/fs_dev.h",
+    "https://github.com/J-D-K/JKSV/blob/master/src/fs/file.cpp"
+  ]
+}
