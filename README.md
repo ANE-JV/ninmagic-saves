@@ -1,16 +1,18 @@
-# NinMagic Saves 0.2.1 beta
+# NinMagic Saves 0.2.2 beta
 
-**0.2.1 beta — transferencia de partidas mediante reinicio entre CFW sysMMC y emuMMC. Pendiente de validación en consola.**
+**0.2.2 beta — transferencia de partidas mediante reinicio entre CFW sysMMC y emuMMC. Pendiente de validación en consola.**
 
-[Descargar ZIP 0.2.1 beta](https://raw.githubusercontent.com/ANE-JV/ninmagic-saves/main/versions/v0.2.1/NinMagic-Saves-0.2.1.zip)
+[Descargar ZIP 0.2.2 beta](https://raw.githubusercontent.com/ANE-JV/ninmagic-saves/main/versions/v0.2.2/NinMagic-Saves-0.2.2.zip)
 
 La misma aplicación se utiliza en los dos entornos. En CFW sysMMC exporta partidas originales a la microSD con aperturas de solo lectura. En emuMMC permite importar esas copias en una partida del mismo juego, eligiendo el usuario de destino y respaldando antes su progreso actual. No fusiona dos progresos.
 
 Este recorrido requiere ejecutar Atmosphère sobre la memoria original durante la exportación. El sistema original stock no ejecuta el NRO. No se modifica el código de Atmosphère ni se instala un lector físico o módulo adicional. No se ofrece invisibilidad ante Nintendo ni garantía contra baneos.
 
+La 0.2.2 corrige la lectura de títulos decorativos de Hekate que podían provocar «Título INI sin cierre». Conserva la configuración existente y añade archivo y línea a los errores de sintaxis. La red continúa siendo informativa.
+
 ## Instalación
 
-Extrae NinMagic-Saves-0.2.1.zip en la raíz de la microSD, también si utilizas un descargador AIO configurado para extraer en esa raíz. El ejecutable queda en switch/NinMagicSaves/NinMagic-Saves.nro.
+Extrae NinMagic-Saves-0.2.2.zip en la raíz de la microSD, también si utilizas un descargador AIO configurado para extraer en esa raíz. El ejecutable queda en switch/NinMagicSaves/NinMagic-Saves.nro.
 
 El paquete incluye el icono SAVES en magenta/cian neón, los recursos interiores y el canal de actualización propio. No incluye overlays, partidas, claves, imágenes NAND, módulos de Atmosphère ni cambios de arranque activos.
 
@@ -62,7 +64,7 @@ El reinicio automático con destino de una sola vez depende del hardware y carga
 
 Canal independiente: <https://raw.githubusercontent.com/ANE-JV/ninmagic-saves/main/update.txt>.
 
-Para pasar de una versión anterior a la 0.2.1, utiliza Actualizar dentro de NinMagic Saves en emuMMC; no hace falta instalarla por MTP. Desde ese mismo apartado puedes consultar y descargar las próximas versiones. Se comprueban identidad del NRO, versión, tamaño y SHA-256 antes de pedir confirmación. Se conserva el ejecutable anterior. Cierra y vuelve a abrir la aplicación después de instalar.
+Para pasar de una versión anterior a la 0.2.2, utiliza Actualizar dentro de NinMagic Saves en emuMMC; no hace falta instalarla por MTP. Desde ese mismo apartado puedes consultar y descargar las próximas versiones. Se comprueban identidad del NRO, versión, tamaño y SHA-256 antes de pedir confirmación. Se conserva el ejecutable anterior. Cierra y vuelve a abrir la aplicación después de instalar.
 
 **El actualizador de red está deshabilitado en sysMMC y en entornos no identificados.** Una consulta fallida se muestra como error, no como «última versión».
 

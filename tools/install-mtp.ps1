@@ -4,7 +4,7 @@
 param(
     [switch]$Install,
     [switch]$WhatIf,
-    [ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+$')][string]$ExpectedVersion = '0.2.1',
+    [ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+$')][string]$ExpectedVersion = '0.2.2',
     [ValidateRange(5,30)][int]$TimeoutSeconds = 30
 )
 $ErrorActionPreference = 'Stop'

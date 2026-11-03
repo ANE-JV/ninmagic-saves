@@ -51,6 +51,52 @@ int main() {
     assert(ownedConfiguration().find("autoboot=") == std::string::npos);
 
     const std::string normal = "[config]\nautoboot=0\n\n[CFW]\npkg3=atmosphere/package3\nemummc_force_disable=1\n";
+    // Regression: 0.2.1 stopped all reboot planning with "Titulo INI sin
+    // cierre" for decorative captions which Hekate accepts unchanged.
+    for (const std::string caption : {"{Title}", "{Title}  ", "{Title} #00FF00",
+                                       "{Title", "{", "{}", "{#FF00FF title}"}) {
+        const std::string fixture = normal + "id=valid\n" + caption +
+            "\nid=valid\nstock=1\n[Stock]\nstock=1\nid=stock\n"
+            "[Emu]\npkg3=atmosphere/package3\nemummcforce=1\n";
+        assert(parseBootEntries({{"main", fixture, false}}, entries, error));
+        assert(entries.size() == 2 && entries[0].index == 1 && entries[1].index == 3);
+        assert(entries[0].id == "valid" && entries[0].automaticAddressable);
+        assert(entries[0].target == RebootTarget::CfwSysMMC);
+        assert(entries[1].target == RebootTarget::EmuMMC);
+    }
+    assert(parseBootEntries({{"main", "[config] trailing\nautoboot=0\n\n[CFW] } suffix\npkg3=atmosphere/package3\nemummc_force_disable=1\n[Stock] extra\nstock=1\n", false}}, entries, error));
+    assert(entries.size() == 1 && entries[0].name == "CFW" && entries[0].index == 1);
+    assert(parseBootEntries({{"main", "[con\rfig]\r\nautoboot=0\r\n\r\n{Title}\r suffix\r\n[CFW]\r\npkg\r3=atmosphere/package3\r\nemummc_force_disable=1\r\n", false}}, entries, error));
+    assert(entries.size() == 1 && entries[0].index == 1);
+
+    const std::string external = "{External caption} color\n[config] trailing\nid=valid\nautoboot=0\n"
+        "[Stock]\nstock=1\nid=stock\n{unfinished caption\nid=valid\n"
+        "[CFW]\npkg3=atmosphere/package3\nemummc_force_disable=1\nid=valid\n";
+    assert(parseBootEntries({{"main", MainIni, false}, {"bootloader/ini/a.ini", external, true},
+                            {"bootloader/ini/b.ini", "[config]\nid=valid\n[Emu]\npkg3=atmosphere/package3\nemummcforce=1\n", true}}, entries, error));
+    assert(entries.size() == 3 && entries[1].index == 2 && entries[2].index == 3);
+    assert(entries[1].automaticAddressable && entries[1].id == "valid");
+    assert(entries[1].externalIni && entries[2].externalIni);
+
+    // Do not make whitespace/BOM syntax mean something different to Hekate.
+    assert(!parseBootEntries({{"main", std::string("\xEF\xBB\xBF") + normal, false}}, entries, error));
+    assert(!parseBootEntries({{"main", " [config]\nautoboot=0\n[CFW]\npkg3=atmosphere/package3\nemummc_force_disable=1\n", false}}, entries, error));
+    assert(parseBootEntries({{"main", normal + "#\nstock=1\n", false}}, entries, error));
+    assert(entries.empty()); // A one-character '#' line is not a Hekate comment.
+    assert(parseBootEntries({{"main", normal + " \nstock=1\n", false}}, entries, error));
+    assert(entries.empty()); // Do not trim a space-only line into a separator.
+    assert(parseBootEntries({{"main", normal + "pkg3 =atmosphere/package3\n", false}}, entries, error));
+    assert(entries.empty());
+    assert(!parseBootEntries({{"main", MainIni, false}, {"bootloader/ini/bad.ini", "{caption\n[Unclosed\n", true}}, entries, error));
+    assert(error.find("bootloader/ini/bad.ini:2:") != std::string::npos);
+    assert(!parseBootEntries({{"main", MainIni, false}, {"bootloader/ini/large.ini", "{caption\n" + std::string(501, 'a') + "\n", true}}, entries, error));
+    assert(error.find("bootloader/ini/large.ini:2:") != std::string::npos);
+    assert(parseBootEntries({{"main", normal + "{" + std::string(499, 'a') + "\n", false}}, entries, error));
+    assert(entries.size() == 1 && entries[0].index == 1);
+    assert(!parseBootEntries({{"main", std::string(MaxIni + 1, 'a'), false}}, entries, error));
+    assert(error.find("main:1:") != std::string::npos);
+    assert(!parseBootEntries({{"main", std::string("[config]\n") + std::string(1, '\0'), false}}, entries, error));
+    assert(error.find("main:2:") != std::string::npos);
     for (const auto& overrideLine : {
         "stock=1\n", "payload=bootloader/payloads/fusee.bin\n", "l4t=1\n",
         "emupath=emuMMC/OTHER\n", "kip1patch=nosigchk\n", "cal0blank=1\n",
@@ -111,6 +157,12 @@ int main() {
     testRuntime.atmosphere = true;
     testRuntime.offline = false; // Unknown network is informational, not a gate.
     testRuntime.gamesClosed = true;
+    const auto originalEmu = get(root / "emuMMC/emummc.ini");
+    put(root / "emuMMC/emummc.ini", "{caption\n[emummc\nenabled=1\n");
+    auto malformedEmu = inspectRebootWorkflow();
+    assert(!malformedEmu.configurationValid);
+    assert(malformedEmu.detail.find("emuMMC/emummc.ini:2:") != std::string::npos);
+    put(root / "emuMMC/emummc.ini", originalEmu);
     auto inspection = inspectRebootWorkflow();
     assert(inspection.configurationValid && inspection.payloadValid && inspection.canPrepareAccess);
     assert(!prepareRebootAccess(false, true, error));

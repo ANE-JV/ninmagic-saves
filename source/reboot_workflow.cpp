@@ -121,33 +121,50 @@ struct Section {
     std::map<std::string, std::string> fields;
     bool ambiguous = false;
     std::vector<std::string> declaredIds;
+    std::size_t lineNumber = 0;
 };
 
 // Hekate's parser is NOT a general-purpose INI parser: blank/comment/caption
 // lines terminate the previous section, whitespace is not stripped, and ';'
 // is not a comment marker. Mirror that distinction instead of guessing.
-bool parseSections(const std::string& text, std::vector<Section>& out, std::string& error) {
-    out.clear();
-    if (text.size() > MaxIni || text.find('\0') != std::string::npos) {
-        error = "INI demasiado grande o con bytes no validos."; return false;
+// See CTCaer/hekate bdk/utils/ini.c:_find_section_name and ini_parse. Captions
+// end at the first '}' or end of the line; a closing '}' is not mandatory.
+bool parseSections(const std::string& text, std::vector<Section>& out,
+                   std::string& error, const std::string& path) {
+    out.clear(); error.clear();
+    const auto fail = [&error, &path](std::size_t line, const char* message) {
+        error = path + ":" + std::to_string(line) + ": " + message;
+        return false;
+    };
+    if (text.size() > MaxIni) return fail(1, "INI demasiado grande.");
+    const auto nul = text.find('\0');
+    if (nul != std::string::npos) {
+        const auto line = 1 + std::count(text.begin(), text.begin() + nul, '\n');
+        return fail(static_cast<std::size_t>(line), "INI con bytes no validos.");
     }
     std::istringstream input(text);
     std::string line;
     Section* section = nullptr;
+    std::size_t lineNumber = 0;
     while (std::getline(input, line)) {
-        if (!line.empty() && line.back() == '\r') line.pop_back();
-        if (line.size() > 500) { error = "Linea INI demasiado larga para Hekate."; return false; }
-        if (line.empty() || line[0] == '#' || line[0] == '{') {
-            if (!line.empty() && line[0] == '{' && line.back() != '}') {
-                error = "Titulo INI sin cierre."; return false;
-            }
+        ++lineNumber;
+        // FatFs FF_USE_STRFUNC=2 removes every CR, not only a trailing CR.
+        line.erase(std::remove(line.begin(), line.end(), '\r'), line.end());
+        if (line.size() > 500) return fail(lineNumber, "Linea INI demasiado larga para Hekate.");
+        // Hekate records strlen before removing the LF. This matters for '#'
+        // and other single-character lines; do not turn them into separators.
+        const auto hekateLength = line.size() + (input.eof() ? 0 : 1);
+        if (hekateLength < 2 || (!line.empty() &&
+            (line[0] == '{' || (line[0] == '#' && hekateLength > 2)))) {
             section = nullptr; continue;
         }
-        if (line[0] == '[') {
-            if (line.size() < 3 || line.back() != ']' || line.find(']') != line.size() - 1) {
-                error = "Seccion INI mal formada."; return false;
-            }
-            out.push_back({line.substr(1, line.size() - 2), {}, false, {}});
+        if (!line.empty() && line[0] == '[') {
+            const auto close = line.find(']');
+            // Hekate ignores suffixes after the first ']'. Missing or empty
+            // choice names remain rejected rather than guessing a boot entry.
+            if (close == std::string::npos || close < 2)
+                return fail(lineNumber, "Seccion INI mal formada.");
+            out.push_back({line.substr(1, close - 1), {}, false, {}, lineNumber});
             section = &out.back(); continue;
         }
         if (!section) continue; // Hekate ignores orphan key/value lines.
@@ -314,7 +331,7 @@ bool emummcValid(std::string& token, std::string& error) {
     if (!readText("emuMMC/emummc.ini", text)) { error = "Falta la configuracion de emuMMC."; return false; }
     tokenPart(token, "emuMMC/emummc.ini", text);
     std::vector<Section> sections;
-    if (!parseSections(text, sections, error)) return false;
+    if (!parseSections(text, sections, error, "emuMMC/emummc.ini")) return false;
     const Section* emu = nullptr;
     for (const auto& s : sections) if (s.name == "emummc") {
         if (emu) { error = "Configuracion emuMMC duplicada."; return false; }
@@ -410,22 +427,27 @@ bool parseBootEntries(const std::vector<IniDocument>& documents,
     unsigned mainIndex = 0, externalIndex = 0;
     bool mainSeen = false, configSeen = false;
     for (const auto& doc : documents) {
-        if (!doc.external && mainSeen) { error = "Mas de un INI principal."; return false; }
+        if (!doc.external && mainSeen) { error = doc.path + ":1: Mas de un INI principal."; return false; }
         if (!doc.external) mainSeen = true;
         std::vector<Section> sections;
-        if (!parseSections(doc.contents, sections, error)) { entries.clear(); return false; }
+        if (!parseSections(doc.contents, sections, error, doc.path)) { entries.clear(); return false; }
         for (const auto& section : sections) {
+            // Hekate skips external [config] sections before ID lookup or
+            // incrementing the external boot index (main.c:_auto_launch).
+            if (doc.external && section.name == "config") continue;
             // Include all IDs, even those in excluded stock/payload/ambiguous
             // entries, because Hekate searches those entries as well.
-            ids.insert(section.declaredIds.begin(), section.declaredIds.end());
             if (!doc.external && section.name == "config") {
                 if (configSeen || mainIndex != 0 || section.ambiguous) {
-                    entries.clear(); error = "La seccion config principal es ambigua."; return false;
+                    entries.clear(); error = doc.path + ":" + std::to_string(section.lineNumber) +
+                        ": La seccion config principal es ambigua."; return false;
                 }
                 configSeen = true; continue;
             }
+            ids.insert(section.declaredIds.begin(), section.declaredIds.end());
             if (!doc.external && !configSeen) {
-                entries.clear(); error = "Hekate requiere config antes de las entradas."; return false;
+                entries.clear(); error = doc.path + ":" + std::to_string(section.lineNumber) +
+                    ": Hekate requiere config antes de las entradas."; return false;
             }
             unsigned index = doc.external ? ++externalIndex : ++mainIndex;
             const auto foundId = section.fields.find("id");
@@ -438,7 +460,13 @@ bool parseBootEntries(const std::vector<IniDocument>& documents,
             entries.push_back({section.name, id, doc.path, target, index, doc.external});
         }
     }
-    if (!mainSeen || !configSeen) { entries.clear(); error = "Falta config en el INI principal de Hekate."; return false; }
+    if (!mainSeen || !configSeen) {
+        entries.clear();
+        const auto main = std::find_if(documents.begin(), documents.end(), [](const IniDocument& doc) { return !doc.external; });
+        error = (main == documents.end() ? "bootloader/hekate_ipl.ini" : main->path) +
+            std::string(":1: Falta config en el INI principal de Hekate.");
+        return false;
+    }
     for (auto& entry : entries)
         if (!entry.id.empty() && (!bootIdValid(entry.id) || ids.count(entry.id) != 1))
             entry.automaticAddressable = false;

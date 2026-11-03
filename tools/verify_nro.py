@@ -7,7 +7,7 @@ import struct
 
 ROOT = Path(__file__).resolve().parent.parent
 TITLE = "NinMagic Saves"
-VERSION = "0.2.1"
+VERSION = "0.2.2"
 
 def require(value, message):
     if not value:

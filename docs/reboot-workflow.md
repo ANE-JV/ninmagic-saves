@@ -1,6 +1,6 @@
-# Reinicio entre emuMMC y CFW sysMMC — 0.2.1 beta
+# Reinicio entre emuMMC y CFW sysMMC — 0.2.2 beta
 
-Implementación de NinMagic Saves 0.2.1 beta. Las pruebas con archivos sintéticos y la compilación no sustituyen la validación del recorrido completo en una consola real. Las pruebas de escritorio descritas aquí no solicitan reinicios físicos.
+Implementación de NinMagic Saves 0.2.2 beta. Las pruebas con archivos sintéticos y la compilación no sustituyen la validación del recorrido completo en una consola real. Las pruebas de escritorio descritas aquí no solicitan reinicios físicos.
 
 ## Qué hace
 
@@ -9,6 +9,8 @@ La NRO consulta a Atmosphere mediante SPL 65007 para distinguir la NAND activa. 
 Al extraer partidas, el destino del reinicio es **CFW sobre sysMMC**. Stock/OFW no ejecuta esta NRO. Después de cada arranque hay que volver a abrir NinMagic Saves desde hbmenu. No hay reapertura automática ni acceso simultáneo a las dos NAND.
 
 El código revisa las entradas existentes de Hekate por su contenido. Excluye stock, payloads, Linux, destinos emuMMC sobreescritos, instrucciones duplicadas o ambiguas y componentes personalizados no revisados. Acepta `pkg3=atmosphere/package3` o el alias `fss0` y una selección inequívoca mediante `emummcforce=1` o `emummc_force_disable=1`. Las etiquetas de las entradas no conceden compatibilidad.
+
+Desde 0.2.2, los títulos decorativos `{...}` se interpretan como separadores y no como opciones de arranque, incluso si carecen de llave final o llevan texto después de ella, como admite el lector oficial de Hekate. No aportan claves ni IDs a una entrada y no aumentan su índice. Las secciones `[config]` de INI externos se omiten antes de contar opciones o buscar IDs, como hace Hekate. Los errores de sintaxis restantes identifican el archivo y la línea; esta lectura no modifica el INI del usuario.
 
 ## Preparar acceso, con confirmación en pantalla
 

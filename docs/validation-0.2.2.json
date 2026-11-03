@@ -1,0 +1,59 @@
+{
+  "version": "0.2.2",
+  "date": "2026-11-03",
+  "nro_sha256": "dfdfa5ba9f0edf0033055f8add105a94fd1e9902d8032982e130d07ab3bcf889",
+  "nro_bytes": 2037745,
+  "switch_build": "devkitA64/libnx: passed",
+  "nro_resources": "NACP identity/version, icon, RomFS font/logo hashes verified",
+  "change": "Hekate decorative captions no longer require a terminal brace. Header suffixes, CR handling and external config indices match documented parser behavior; real parse errors include file and line.",
+  "host_suites": {
+    "self_updater": {
+      "scenarios": 76,
+      "checks": 747,
+      "passed": true
+    },
+    "https": {
+      "checks": 30,
+      "passed": true
+    },
+    "ui_environment_policy": {
+      "checks": 20,
+      "passed": true
+    },
+    "save_transfer": {
+      "checks": 760,
+      "passed": true
+    },
+    "reboot_workflow": {
+      "passed": true,
+      "fixtures": "synthetic",
+      "network_combinations": 32,
+      "parser_cases": [
+        "captions with missing brace and suffix",
+        "CRLF and embedded CR",
+        "choice header suffix",
+        "no whitespace/BOM normalization",
+        "no key/ID leakage after caption",
+        "external config sections do not count toward index",
+        "malformed choice and size/NUL errors identify file and line",
+        "emuMMC syntax diagnostic"
+      ]
+    },
+    "archived_reader_client": {
+      "checks": 236,
+      "passed": true,
+      "linked_into_nro": false
+    },
+    "archived_reader_probe": {
+      "passed": true,
+      "linked_into_nro": false
+    }
+  },
+  "ui_previews": "No UI layout change; version comes from AppVersion. Prior 0.2.1 warning layout preserved.",
+  "hardware_tested": false,
+  "save_import_tested_on_console": false,
+  "reboot_tested_on_console": false,
+  "universal_compatibility_verified": false,
+  "note": "Synthetic fixtures only. Existing console configuration was not changed and no MTP installation or reboot was performed. User updates through the app.",
+  "ini_regression": "New caption fixture failed on 0.2.1 before the fix; all cases pass on 0.2.2"
+}
