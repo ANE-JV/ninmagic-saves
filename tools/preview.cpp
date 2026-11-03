@@ -21,8 +21,8 @@ int main(int argc,char**argv){
     v.environmentDetail="No se pudo confirmar de forma coherente el entorno. No se abrirán partidas ni se iniciará la red.";
     draw("home-unknown");
     v.environment=UiEnvironment::EmuMmc;v.environmentDetail="Atmosphère confirma emuMMC. Elige un recorrido; no se importará ni reiniciará nada al abrir esta pantalla.";draw("home-emu");
-    v.environment=UiEnvironment::SysMmc;v.offline=true;v.environmentDetail="Wi-Fi apagado y sin conexión. Las partidas originales solo se abren para exportar copias a la microSD.";draw("home-sys-offline");
-    v.offline=false;v.environmentDetail="Desactiva Wi-Fi y activa modo avión. El acceso a partidas originales queda bloqueado hasta comprobar la desconexión.";draw("home-sys-connected");v.offline=true;
+    v.environment=UiEnvironment::SysMmc;v.offline=true;v.environmentDetail="Antes de exportar, activa modo avión en el sistema original y desconecta Ethernet. La detección de red es informativa; no impide continuar.";draw("home-sys-offline");
+    v.offline=false;v.environmentDetail="Antes de exportar, activa modo avión en el sistema original y desconecta Ethernet. La detección de red es informativa; no impide continuar.";draw("home-sys-connected");v.offline=true;
     v.rows={{"OCTOPATH TRAVELER II","Perfil original / ejemplo","Title ID: 0100000000000000. Perfil: original. Tipo: usuario.",true},{"Paw Patrol: Mighty Pups Save Adventure Bay!","Segundo perfil / ejemplo","Title ID: 0100000000000001. Perfil: segundo. Tipo: usuario.",true}};
     v.screen=Screen::Sources;draw("sources");v.screen=Screen::ExportConfirm;draw("export-confirm");
     v.screen=Screen::Busy;v.message="Copiando las partidas originales a la microSD...";v.progressKnown=true;v.progressTotal=2;v.progressCurrent=1;draw("export-progress");
@@ -31,10 +31,10 @@ int main(int argc,char**argv){
     v.sourceGame="OCTOPATH TRAVELER II";v.sourceTitleId="0100000000000000";v.sourceProfile="Perfil original";v.destinationProfile="Cuenta emuMMC diferente";v.sourceAccountId="UID: 0123456789ABCDEF0123456789ABCDEF";v.destinationAccountId="UID: FEDCBA9876543210FEDCBA9876543210";v.destinationTitleId=v.sourceTitleId;v.backupPath="backup-20261103-0100000000000000-1234567890";v.backupVerified=true;
     v.screen=Screen::ImportConfirm;draw("import-confirm");v.backupVerified=false;draw("import-blocked");
     v.screen=Screen::Backups;v.rows[0].subtitle="Cuenta emuMMC / completado";v.rows[0].detail="Copia previa a esta importación. Se perderán los cambios posteriores de la cuenta de destino.";draw("backups");v.screen=Screen::RestoreConfirm;draw("recovery-confirm");
-    v.screen=Screen::ConfigureReboot;v.rebootToOriginal=true;v.originalAirplaneAcknowledged=false;
-    v.rebootDetails={"Crea accesos separados para sysMMC CFW y emuMMC; no cambia el arranque automático.","Si aún no activaste modo avión en el original, cancela y hazlo primero desde el sistema original."};draw("reboot-configure");
-    v.screen=Screen::RebootConfirm;v.automaticReboot=true;v.originalAirplaneAcknowledged=true;
-    v.transferDetail="Destino: NinMagic Saves - Original CFW. Es CFW sobre la memoria original; el modo avión debe estar activado previamente.";
+    v.screen=Screen::ConfigureReboot;v.rebootToOriginal=true;
+    v.rebootDetails={"Crea accesos separados para sysMMC CFW y emuMMC; no cambia el arranque automático.","El aviso de red se muestra antes de confirmar. La aplicación no exige detectar modo avión para continuar."};draw("reboot-configure");
+    v.screen=Screen::RebootConfirm;v.automaticReboot=true;
+    v.transferDetail="Destino: NinMagic Saves - Original CFW. Es CFW sobre la memoria original. Revisa el aviso de red antes de confirmar.";
     v.rebootDetails={"Entrada: NinMagic Saves - Original CFW. bootloader/ini/ninmagic-saves.ini","A solicitará el reinicio hacia la entrada revisada.","Después del arranque, abre hbmenu y NinMagic Saves manualmente."};draw("reboot-confirm");
     v.automaticReboot=false;v.rebootDetails[1]="Reinicio automático no disponible: sal y entra manualmente en Hekate; elige la entrada indicada.";v.transferDetail="Destino: NinMagic Saves - Original CFW. Reinicia manualmente a Hekate > More configs y elige esa entrada.";draw("reboot-manual");
     v.screen=Screen::Help;draw("help");

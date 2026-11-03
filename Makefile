@@ -44,7 +44,7 @@ DATA		:=
 INCLUDES	:=	include
 APP_TITLE := NinMagic Saves
 APP_AUTHOR := NinMagic
-APP_VERSION := 0.2.0
+APP_VERSION := 0.2.1
 ICON := assets/icon.jpg
 ROMFS		:=	romfs
 

@@ -137,7 +137,7 @@ void accent(int x,int y,int w) {
 void header(const View&v) {
     logoAt(36,22,61);text("NINMAGIC",108,27,27);text("SAVES / BETA",109,60,12,magenta);
     rect(343,35,1,35,border);text("PARTIDAS GUARDADAS",366,43,18,muted);
-    box(1000,37,241,30,raised,magenta);text("BETA / 0.2.0",1020,44,14,magenta);
+    box(1000,37,241,30,raised,magenta);text("BETA / "+std::string(AppVersion),1020,44,14,magenta);
     accent(36,99,1207);
     fitted("FW "+(v.firmware.empty()?std::string("sin comprobar"):v.firmware),38,116,245,13,muted);
     fitted(v.atmosphere.empty()?"Atmosphère: sin comprobar":v.atmosphere,293,116,420,13,cyan);
@@ -159,7 +159,7 @@ void home(const View&v){
     heading("Tus partidas, entre ambos entornos", "sysMMC original > copia en microSD > emuMMC de destino");
     box(37,244,393,380);accent(38,245,391);logoAt(143,269,177);
     text("ENTORNO ACTUAL",61,466,13,magenta);wrapped(modeLabel(v.environment),61,497,342,22,2);
-    fitted(v.environment==UiEnvironment::SysMmc?(v.offline?"WI-FI APAGADO, SIN CONEXIÓN":"ACTIVA EL MODO AVIÓN"):"ORIGEN Y DESTINO SEPARADOS",61,581,342,14,v.offline?green:orange);
+    fitted(v.environment==UiEnvironment::SysMmc?(v.offline?"WI-FI APAGADO, SIN CONEXIÓN":"AVISO: ACTIVA MODO AVIÓN"):"ORIGEN Y DESTINO SEPARADOS",61,581,342,14,v.offline?green:orange);
     box(450,244,793,380);accent(451,245,791);const auto actions=homeActions(v.environment);
     for(size_t i=0;i<actions.size();++i){const int y=269+int(i)*87;const bool active=i==v.selected;auto labels=actionLabel(actions[i]);
         box(472,y,748,75,active?rgb(38,24,59):panel,active?magenta:border);text(std::to_string(i+1),488,y+17,22,active?cyan:muted);fitted(labels.first,523,y+12,675,22,active?ink:muted);fitted(labels.second,523,y+47,675,14,muted);
@@ -220,17 +220,16 @@ void rebootConfirm(const View&v,bool configure){
     box(37,244,1206,380);accent(38,245,1204);
     wrapped(configure?"Se creará únicamente bootloader/ini/ninmagic-saves.ini. Las entradas actuales se conservan.":v.transferDetail,63,270,1156,21,3);
     int y=374;for(size_t i=0;i<v.rebootDetails.size()&&i<3;++i){wrapped(v.rebootDetails[i],63,y,1156,16,2,muted);y+=49;}
-    if(v.rebootToOriginal){box(62,536,22,22,v.originalAirplaneAcknowledged?cyan:panel,cyan);text(v.originalAirplaneAcknowledged?"+":"",68,538,14,panel);text("Ya activé modo avión en el sistema original antes de entrar con CFW.",98,537,17,v.originalAirplaneAcknowledged?cyan:orange);}
+    if(v.rebootToOriginal)wrapped("Aviso: activa modo avión en el sistema original y desconecta Ethernet. Hacerlo después de arrancar no evita una conexión durante el inicio.",63,536,1156,17,2,orange);
     wrapped("No ofrece invisibilidad ni garantía frente a baneos. Tras arrancar, abre hbmenu y NinMagic Saves de nuevo.",63,585,1156,15,2,muted);
     std::vector<std::pair<std::string,std::string>> keys;
-    if((configure||v.automaticReboot)&&(!v.rebootToOriginal||v.originalAirplaneAcknowledged))keys.push_back({"A",configure?"Crear acceso":"Confirmar reinicio"});
-    if(v.rebootToOriginal)keys.push_back({"Y","Confirmar modo avión previo"});
+    if(configure||v.automaticReboot)keys.push_back({"A",configure?"Crear acceso":"Confirmar reinicio"});
     keys.push_back({"B","Cancelar"});keys.push_back({"+","Salir"});footer(keys);
 }
 void help(){
     heading("Un recorrido con copia y confirmación", "Versión beta: requiere probar el recorrido en tu consola");box(37,244,1206,380);accent(38,245,1204);
     const std::pair<const char*,const char*> rows[]={
-        {"01  PREPARA EL SISTEMA ORIGINAL","Activa modo avión en el sistema original antes de su primer arranque con CFW. El ajuste de emuMMC no demuestra el del original."},
+        {"01  PREPARA EL SISTEMA ORIGINAL","Activa modo avión en el original antes de arrancar con CFW. La detección de red es informativa y no impide continuar."},
         {"02  EXPORTA EN SYSMMC CFW","Abre NinMagic Saves desde hbmenu. Marca las partidas y confirma su copia a microSD. Aquí solo se permite exportar y volver."},
         {"03  IMPORTA EN EMUMMC","Reabre la aplicación. Elige una copia del juego y una partida/cuenta de destino existente. Debe coincidir el Title ID; los usuarios pueden ser distintos."},
         {"04  CONFIRMA DESPUÉS DEL BACKUP","La aplicación prepara y verifica una copia del destino antes de pedir confirmación. Importar reemplaza la partida; nunca fusiona contenidos."},

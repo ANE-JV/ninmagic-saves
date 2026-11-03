@@ -89,6 +89,7 @@ class Engine {
     std::string root_;
 public:
     Engine(Backend& backend, std::string root);
+    bool listSaves(std::vector<SaveEntry>& saves, std::string& error);
     bool listExports(std::vector<ExportEntry>& exports, std::string& error);
     TransferResult exportSave(const SaveEntry& source);
     TransferResult prepareRestore(const ExportEntry& exported, const SaveEntry& destination, RestorePlan& plan);

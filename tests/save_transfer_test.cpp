@@ -122,20 +122,41 @@ int main() {
         Fixture f(base,"device"); f.b.source.kind=f.b.target.kind=SaveKind::Device; f.b.source.userLow=f.b.source.userHigh=f.b.target.userLow=f.b.target.userHigh=0;
         f.exportGood(); auto plan=f.prepareGood(); require(f.engine.applyRestore(plan).ok,"device saves map by exact title/type/index, no account");
     }
-    for(unsigned mode=0;mode<5;++mode) {
+    for(unsigned mode=0;mode<4;++mode) {
         Fixture f(base,"export-gate-"+std::to_string(mode));
         if(mode==0) f.b.env.mode=SaveEnvironment::Unknown;
         if(mode==1) f.b.env.mode=SaveEnvironment::EmuMMC;
-        if(mode==2) f.b.env.offlineVerified=false;
-        if(mode==3) f.b.env.gamesClosed=false;
-        if(mode==4) f.b.failEnumeration=true;
+        if(mode==2) f.b.env.gamesClosed=false;
+        if(mode==3) f.b.failEnumeration=true;
         require(!f.engine.exportSave(f.b.source).ok,"unsafe export gate rejected "+std::to_string(mode)); require(f.b.readMounts==0&&f.b.writeMounts==0,"no FS mount before export gate");
+        if(mode!=1) { std::vector<SaveEntry> saves; std::string error; require(!f.engine.listSaves(saves,error)&&saves.empty(),"unknown runtime/game open/enumeration failure still blocks save list"); }
+    }
+    for(const auto& network:std::vector<std::string>{"Wi-Fi enabled","Network connected","Network state unknown"}) {
+        Fixture f(base,"network-warning-"+std::to_string(checks)); f.b.env.offlineVerified=false; f.b.env.networkLabel=network;
+        std::vector<SaveEntry> saves; std::string error;
+        require(f.engine.listSaves(saves,error)&&saves.size()==1&&saves.front().saveDataId==f.b.source.saveDataId,"sysMMC save list permits network warning: "+network);
+        f.exportGood();
+        require(!f.b.env.offlineVerified&&f.b.env.networkLabel==network,"export preserves network diagnostic without changing connectivity");
     }
     {
         Fixture f(base,"network-changes"); unsigned chunks=0;
         f.b.fault=[&](const char* stage,const std::string&){ if(std::string(stage)=="copy-chunk"&&++chunks==1) f.b.env.offlineVerified=false; return true; };
-        require(!f.engine.exportSave(f.b.source).ok,"Wi-Fi/network change during copy stops export");
+        require(f.engine.exportSave(f.b.source).ok,"Wi-Fi/network change during copy is informational and does not interrupt export");
+        std::vector<ExportEntry> list; std::string error; require(f.engine.listExports(list,error)&&list.size()==1,"completed export remains verified after network status change");
+        require(contents(f.b.sourcePath)==f.originalSource&&f.b.writeMounts==0,"network warning never permits source writes");
+    }
+    {
+        Fixture f(base,"interrupted-export");
+        f.b.fault=[](const char* stage,const std::string&){ return std::string(stage)!="copy-chunk"; };
+        require(!f.engine.exportSave(f.b.source).ok,"actual copy interruption still stops export");
         std::vector<ExportEntry> list; std::string error; require(f.engine.listExports(list,error)&&list.empty(),"interrupted copy never appears complete"); require(contents(f.b.sourcePath)==f.originalSource,"source untouched after interrupted export");
+    }
+    for(unsigned changed=0;changed<2;++changed) {
+        Fixture f(base,"runtime-changes-"+std::to_string(changed)); unsigned chunks=0;
+        f.b.fault=[&](const char* stage,const std::string&){ if(std::string(stage)=="copy-chunk"&&++chunks==1) { if(changed==0) f.b.env.mode=SaveEnvironment::Unknown; else f.b.env.gamesClosed=false; } return true; };
+        require(!f.engine.exportSave(f.b.source).ok,"runtime or game status change still interrupts export");
+        std::vector<ExportEntry> list; std::string error; require(f.engine.listExports(list,error)&&list.empty(),"runtime check interruption cannot produce an importable export");
+        require(contents(f.b.sourcePath)==f.originalSource,"runtime check failure leaves source unchanged");
     }
     {
         Fixture f(base,"unique-users"); auto one=f.engine.exportSave(f.b.source); require(one.ok,"first source save");

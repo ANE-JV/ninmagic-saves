@@ -109,12 +109,13 @@ int main() {
     testRuntime.mode = RuntimeMode::EmuMMC;
     testRuntime.hardware = HardwareFamily::Erista;
     testRuntime.atmosphere = true;
-    testRuntime.offline = true;
+    testRuntime.offline = false; // Unknown network is informational, not a gate.
     testRuntime.gamesClosed = true;
     auto inspection = inspectRebootWorkflow();
     assert(inspection.configurationValid && inspection.payloadValid && inspection.canPrepareAccess);
     assert(!prepareRebootAccess(false, true, error));
     assert(!prepareRebootAccess(true, false, error));
+    assert(error.find("aviso de red") != std::string::npos);
     assert(!fs::exists(root / OwnedIni));
     assert(prepareRebootAccess(true, true, error));
     assert(get(root / OwnedIni) == ownedConfiguration());
@@ -124,17 +125,39 @@ int main() {
     RebootPlan plan;
     assert(prepareRebootPlan(RebootTarget::CfwSysMMC, plan, error));
     assert(plan.automatic && plan.entry.id == "nmsvSys");
+    assert(plan.detail.find("despues de iniciar puede ser tarde") != std::string::npos);
     assert(!requestReboot(plan, false, true, error));
     assert(!requestReboot(plan, true, false, error));
+    assert(error.find("aviso de red") != std::string::npos);
     testRuntime.gamesClosed = false;
+    assert(!prepareRebootAccess(true, true, error));
     assert(!requestReboot(plan, true, true, error));
+    assert(error.find("Cierra el juego") != std::string::npos);
     testRuntime.gamesClosed = true;
     assert(!requestReboot(plan, true, true, error));
     assert(error.find("PC") != std::string::npos); // never a host reboot
     assert(get(root / "bootloader/update.bin") == bytesToken(fakePayload()));
-    testRuntime.offline = false;
+    // Connected, connecting, disconnected, unknown and inconsistent cached
+    // network observations do not prevent setup or review. A network change
+    // after review must also reach the host-only reboot boundary, not block.
+    for (unsigned mask = 0; mask < 32; ++mask) {
+        testRuntime.wifiDisabledKnown = mask & 1;
+        testRuntime.wifiDisabled = mask & 2;
+        testRuntime.networkKnown = mask & 4;
+        testRuntime.networkConnected = mask & 8;
+        testRuntime.offline = mask & 16;
+        assert(prepareRebootAccess(true, true, error));
+        RebootPlan networkPlan;
+        assert(prepareRebootPlan(RebootTarget::CfwSysMMC, networkPlan, error));
+        assert(networkPlan.automatic && networkPlan.entry.id == "nmsvSys");
+        assert(!requestReboot(plan, true, true, error));
+        assert(error.find("PC") != std::string::npos);
+    }
+    testRuntime.atmosphere = false;
+    assert(!prepareRebootAccess(true, true, error));
     assert(!requestReboot(plan, true, true, error));
-    testRuntime.offline = true;
+    assert(error.find("NAND activa") != std::string::npos);
+    testRuntime.atmosphere = true;
     put(root / "bootloader/hekate_ipl.ini", originalMain + "\n# changed since review\n");
     assert(!requestReboot(plan, true, true, error) && error.find("cambiaron") != std::string::npos);
     testRuntime.hardware = HardwareFamily::Mariko;
@@ -145,7 +168,7 @@ int main() {
     testRuntime.mode = RuntimeMode::SysMMC;
     assert(prepareRebootPlan(RebootTarget::EmuMMC, plan, error) && plan.entry.id == "nmsvEmu");
     assert(!prepareRebootPlan(RebootTarget::CfwSysMMC, plan, error));
-    assert(prepareRebootAccess(true, false, error)); // original already running offline
+    assert(prepareRebootAccess(true, false, error)); // original already running
     testRuntime.hardware = HardwareFamily::Unknown;
     assert(prepareRebootPlan(RebootTarget::EmuMMC, plan, error) && !plan.automatic);
     put(root / "bootloader/ini/duplicate.ini", "[Stock duplicate]\nstock=1\nid=nmsvEmu\n");

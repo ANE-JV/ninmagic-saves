@@ -5,7 +5,7 @@
 #include <vector>
 
 namespace nmsaves {
-inline constexpr char AppVersion[] = "0.2.0";
+inline constexpr char AppVersion[] = "0.2.1";
 inline constexpr char AppPath[] = "sdmc:/switch/NinMagicSaves/NinMagic-Saves.nro";
 enum class UiEnvironment { Unknown, EmuMmc, SysMmc };
 enum class HomeAction { Refresh, BringOriginals, Import, Backups, Export, ReturnEmuMmc };
@@ -14,7 +14,7 @@ inline std::vector<HomeAction> homeActions(UiEnvironment environment) {
     if(environment==UiEnvironment::SysMmc)return {HomeAction::Export,HomeAction::ReturnEmuMmc};
     return {HomeAction::Refresh};
 }
-inline bool canExportUi(UiEnvironment environment,bool offline) {return environment==UiEnvironment::SysMmc&&offline;}
+inline bool canExportUi(UiEnvironment environment) {return environment==UiEnvironment::SysMmc;}
 inline bool canImportUi(UiEnvironment environment,bool backupVerified) {return environment==UiEnvironment::EmuMmc&&backupVerified;}
 inline bool canUpdateUi(UiEnvironment environment) {return environment==UiEnvironment::EmuMmc;}
 enum class Screen { Home, Sources, ExportConfirm, Imports, Targets, ImportConfirm, Backups, RestoreConfirm, ConfigureReboot, RebootConfirm, Help, Update, ConfirmUpdate, ConfirmArchive, Busy, Result };
@@ -27,7 +27,7 @@ struct View {
     std::vector<UiRow> rows;
     size_t selected=0;
     std::string sourceGame,sourceProfile,sourceAccountId,sourceTitleId,destinationProfile,destinationAccountId,destinationTitleId,backupPath,transferDetail;
-    bool backupVerified=false,rebootToOriginal=false,originalAirplaneAcknowledged=false,automaticReboot=false;
+    bool backupVerified=false,rebootToOriginal=false,automaticReboot=false;
     std::vector<std::string> rebootDetails;
     uint64_t progressCurrent=0,progressTotal=0;
     bool progressKnown=false;

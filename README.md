@@ -1,8 +1,8 @@
-# NinMagic Saves
+# NinMagic Saves 0.2.1 beta
 
-**0.2.0 beta — transferencia de partidas mediante reinicio entre CFW sysMMC y emuMMC. Pendiente de validación en consola.**
+**0.2.1 beta — transferencia de partidas mediante reinicio entre CFW sysMMC y emuMMC. Pendiente de validación en consola.**
 
-[Descargar ZIP 0.2.0 beta](https://raw.githubusercontent.com/ANE-JV/ninmagic-saves/main/versions/v0.2.0/NinMagic-Saves-0.2.0.zip)
+[Descargar ZIP 0.2.1 beta](https://raw.githubusercontent.com/ANE-JV/ninmagic-saves/main/versions/v0.2.1/NinMagic-Saves-0.2.1.zip)
 
 La misma aplicación se utiliza en los dos entornos. En CFW sysMMC exporta partidas originales a la microSD con aperturas de solo lectura. En emuMMC permite importar esas copias en una partida del mismo juego, eligiendo el usuario de destino y respaldando antes su progreso actual. No fusiona dos progresos.
 
@@ -10,7 +10,7 @@ Este recorrido requiere ejecutar Atmosphère sobre la memoria original durante l
 
 ## Instalación
 
-Extrae NinMagic-Saves-0.2.0.zip en la raíz de la microSD, también si utilizas un descargador AIO configurado para extraer en esa raíz. El ejecutable queda en switch/NinMagicSaves/NinMagic-Saves.nro.
+Extrae NinMagic-Saves-0.2.1.zip en la raíz de la microSD, también si utilizas un descargador AIO configurado para extraer en esa raíz. El ejecutable queda en switch/NinMagicSaves/NinMagic-Saves.nro.
 
 El paquete incluye el icono SAVES en magenta/cian neón, los recursos interiores y el canal de actualización propio. No incluye overlays, partidas, claves, imágenes NAND, módulos de Atmosphère ni cambios de arranque activos.
 
@@ -21,15 +21,17 @@ El paquete incluye el icono SAVES en magenta/cian neón, los recursos interiores
 - Cierra los juegos. Si el destino todavía no tiene una partida, inicia ese juego una vez con el usuario elegido, guarda y ciérralo.
 - Reserva espacio para las copias exportadas, el respaldo del destino y los archivos temporales.
 
-NinMagic comprueba el entorno activo y si el Wi-Fi está deshabilitado y no existe conexión en ese momento. Eso no prueba ausencia de conexiones anteriores, no comprueba todo el estado del sistema y no evita registros locales.
+NinMagic comprueba el entorno activo y consulta el estado de red como información. Desde la 0.2.1, una conexión detectada o un estado de red desconocido **no bloquean** la exportación ni el reinicio. La aplicación muestra un aviso antes de entrar en CFW sysMMC y durante el acceso al sistema original; A confirma la creación del acceso o el reinicio después de presentar el aviso. No hay una casilla que certifique que el modo avión esté activo ni una verificación del modo avión del destino.
+
+Activa modo avión y desconecta Ethernet **antes de arrancar CFW sysMMC**. Activarlos después del arranque no elimina una posible conexión inicial. La consulta actual no demuestra ausencia de conexiones anteriores, no evita registros locales ni ofrece garantías contra baneos. Un entorno sysMMC/emuMMC no identificado sigue bloqueando las operaciones.
 
 ## Recorrido
 
 1. Abre NinMagic Saves en emuMMC desde Homebrew Menu.
-2. Elige traer las partidas originales. Revisa el destino de arranque y confirma que dejaste el sistema original sin conexión.
+2. Elige traer las partidas originales. Revisa el destino de arranque y lee el aviso sobre la red antes de confirmar la acción con A. La aplicación no puede verificar desde emuMMC el modo avión del sistema original.
 3. Si falta una entrada de arranque, la aplicación puede preparar su archivo bootloader/ini/ninmagic-saves.ini, únicamente después de confirmarlo. No sobrescribe hekate_ipl.ini, no cambia el arranque automático permanente ni reemplaza Atmosphère.
 4. Reinicia a CFW sysMMC. Abre nuevamente NinMagic Saves desde Homebrew Menu. **La apertura automática del NRO tras reiniciar no está implementada.**
-5. Revisa que se indique sysMMC. Selecciona las partidas y expórtalas. Las distintas partidas de un mismo juego se muestran por separado.
+5. Revisa que se indique sysMMC y lee el aviso de red. Selecciona las partidas y expórtalas. Las distintas partidas de un mismo juego se muestran por separado. El estado de red es informativo; las partidas originales se siguen abriendo únicamente para lectura.
 6. Vuelve a emuMMC y abre nuevamente NinMagic Saves.
 7. Elige una copia exportada y una partida de destino del mismo juego y tipo. El usuario del destino puede ser diferente al original.
 8. Prepara la importación: se crea y verifica un respaldo de la partida actual antes de mostrar la confirmación.
@@ -60,7 +62,7 @@ El reinicio automático con destino de una sola vez depende del hardware y carga
 
 Canal independiente: <https://raw.githubusercontent.com/ANE-JV/ninmagic-saves/main/update.txt>.
 
-Desde emuMMC, abre Actualizar para consultar y descargar una versión nueva. Se comprueban identidad del NRO, versión, tamaño y SHA-256 antes de pedir confirmación. Se conserva el ejecutable anterior. Cierra y vuelve a abrir la aplicación después de instalar.
+Para pasar de una versión anterior a la 0.2.1, utiliza Actualizar dentro de NinMagic Saves en emuMMC; no hace falta instalarla por MTP. Desde ese mismo apartado puedes consultar y descargar las próximas versiones. Se comprueban identidad del NRO, versión, tamaño y SHA-256 antes de pedir confirmación. Se conserva el ejecutable anterior. Cierra y vuelve a abrir la aplicación después de instalar.
 
 **El actualizador de red está deshabilitado en sysMMC y en entornos no identificados.** Una consulta fallida se muestra como error, no como «última versión».
 

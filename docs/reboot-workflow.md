@@ -1,6 +1,6 @@
-# Reinicio entre emuMMC y CFW sysMMC
+# Reinicio entre emuMMC y CFW sysMMC — 0.2.1 beta
 
-Implementación local para NinMagic Saves. La compilación y las pruebas con archivos sintéticos pasan; **todavía no se ha validado el reinicio en una consola real**. No se ha instalado nada en una consola para estas pruebas.
+Implementación de NinMagic Saves 0.2.1 beta. Las pruebas con archivos sintéticos y la compilación no sustituyen la validación del recorrido completo en una consola real. Las pruebas de escritorio descritas aquí no solicitan reinicios físicos.
 
 ## Qué hace
 
@@ -28,7 +28,9 @@ pkg3=atmosphere/package3
 emummcforce=1
 ```
 
-**La entrada no desactiva Internet**. Antes del primer arranque CFW sysMMC, el usuario debe haber activado el modo avión en el sistema original y desconectado cualquier red por cable. La aplicación no puede comprobar esa configuración desde emuMMC.
+**La entrada no desactiva Internet**. Antes del arranque CFW sysMMC, activa el modo avión en el sistema original y desconecta cualquier red por cable. La aplicación no puede comprobar esa configuración desde emuMMC. Activar modo avión después del arranque no elimina una posible conexión inicial.
+
+La pantalla de preparación o revisión presenta este aviso antes de continuar hacia sysMMC CFW. A confirma crear el acceso o reiniciar después de leerlo; no hay una casilla Y ni una declaración de modo avión activo. Esa confirmación no acredita que el original esté sin conexión. Al acceder a sysMMC, la aplicación mantiene el aviso; no bloquea la exportación por el estado de red.
 
 No se modifica `hekate_ipl.ini`, el autoboot persistente, `emummc.ini`, `exosphere.ini`, `package3` ni `atmosphere/reboot_payload.bin`. No se añaden sigpatches, sysmodules ni drivers. No se copian opciones `cal0blank` de otro perfil. Las opciones globales que ya existan en Atmosphere siguen aplicándose; no se fuerza su activación ni su desactivación y no se modifica PRODINFO.
 
@@ -38,9 +40,9 @@ La validación de emuMMC admite rutas relativas personalizadas y configuraciones
 
 ## Comprobación de red y juegos abiertos
 
-No existe una consulta de modo avión usada por esta implementación. Se comprueba que NIFM indique Wi-Fi desactivada y devuelva exactamente `0xD46ED`, documentado por libnx como «ni conectando ni conectado». Otros errores son desconocidos, no «sin conexión». Todos los estados conectados o en proceso de conexión bloquean la operación. La interfaz Ethernet habilitada, por sí sola, no prueba que exista cable o conexión.
+No existe una consulta de modo avión usada por esta implementación. Se consulta si NIFM indica Wi-Fi desactivada y devuelve exactamente `0xD46ED`, documentado por libnx como «ni conectando ni conectado». Otros errores se muestran como desconocidos, nunca como «sin conexión». Desde la 0.2.1, estos resultados son informativos: una red conectada, una conexión en curso o un estado desconocido **no bloquean la preparación, el reinicio ni la exportación**. La interfaz Ethernet habilitada, por sí sola, tampoco prueba que exista cable o conexión.
 
-Esta comprobación describe el momento actual. No asegura que Internet nunca pueda activarse después. Para el destino sysMMC se requiere además la confirmación independiente del usuario sobre el modo avión previamente activado en el sistema original.
+Esta consulta describe el momento actual. No asegura que Internet no haya estado activo antes o que no pueda activarse después. Para entrar en sysMMC CFW se presenta el aviso sobre el modo avión y la posible conexión inicial antes de confirmar la acción con A; no se exige una detección de red favorable. No se promete invisibilidad ni protección garantizada contra baneos.
 
 Se exige que no haya un juego abierto. PM debe devolver `ProcessNotFound`, o identificar inequívocamente el proceso de la propia NRO en modo aplicación. Se vuelve a consultar justo antes de solicitar el reinicio.
 
@@ -56,7 +58,7 @@ Se prefiere `bootloader/update.bin`; se admite `atmosphere/reboot_payload.bin` s
 
 En Erista se modifica sólo una copia en RAM del bloque `boot_cfg` en 0x94. Se borra el bloque de 0x84 bytes para impedir que queden opciones anteriores, se utiliza `FORCE_AUTOBOOT | FROM_ID` y el ID único seleccionado. Para una entrada existente sin ID puede usarse su índice y lista, tras revisar la configuración completa. Un ID inválido o duplicado deja disponible la selección manual y nunca se envía como selección automática.
 
-La confirmación final vuelve a comprobar entorno, ausencia de red/juego, contenidos INI y payload. Cualquier cambio invalida la revisión. El cliente usa el puerto oficial `bpc:ams`, comando 65001, y `spsmShutdown(true)`. Si el reinicio comunica un error después de preparar el payload, intenta retirar la selección temporal restaurando en RAM el payload revisado sin parchear. Nunca escribe el payload de la SD.
+La confirmación final vuelve a comprobar el entorno, que no haya un juego abierto, los contenidos INI y el payload. Un cambio en el destino o en la configuración invalida la revisión. La red se consulta para informar; un estado conectado o desconocido no invalida el plan ni impide continuar tras leer el aviso. El cliente usa el puerto oficial `bpc:ams`, comando 65001, y `spsmShutdown(true)`. Si el reinicio comunica un error después de preparar el payload, intenta retirar la selección temporal restaurando en RAM el payload revisado sin parchear. Nunca escribe el payload de la SD.
 
 No hay un driver para leer NAND desde emuMMC. El código de reinicio no enumera ni importa partidas. La exportación/importación pertenece al módulo de transferencia, y sólo comienza después de comprobar la NAND en la nueva ejecución.
 
@@ -68,7 +70,7 @@ Las entradas generadas no incluyen configuraciones privadas ni identificadores d
 
 ## Pruebas realizadas
 
-`tests/reboot_workflow_test.cpp` compila de forma independiente con MSYS g++ y `-std=c++17 -Wall -Wextra -Werror`. Usa un directorio temporal creado por la prueba. Cubre selección por semántica, rechazo de stock/overrides, IDs duplicados incluso en entradas excluidas, sintaxis específica de Hekate, payload incorrecto, límites de versión/tamaño, modificación exclusiva del bloque RAM, confirmaciones, archivo existente diferente, preparación idempotente, cambios después de la revisión, red/juego abierto, Mariko y configuración emuMMC RAW/archivo. No ejecuta reinicios reales.
+`tests/reboot_workflow_test.cpp` compila de forma independiente con MSYS g++ y `-std=c++17 -Wall -Wextra -Werror`. Usa un directorio temporal creado por la prueba. Cubre selección por semántica, rechazo de stock/overrides, IDs duplicados incluso en entradas excluidas, sintaxis específica de Hekate, payload incorrecto, límites de versión/tamaño, modificación exclusiva del bloque RAM, confirmaciones, archivo existente diferente, preparación idempotente, cambios después de la revisión, estados de red informativos sin bloqueo, rechazo de juego abierto, Mariko y configuración emuMMC RAW/archivo. No ejecuta reinicios reales.
 
 `source/reboot_workflow.cpp` también compila para AArch64 con el SDK libnx local (`-Wall -Werror`, sin excepciones ni RTTI). Falta probar el arranque real y el retorno con consentimiento del usuario y una configuración comprobada.
 

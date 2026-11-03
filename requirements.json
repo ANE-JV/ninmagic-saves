@@ -1,11 +1,11 @@
 {
   "name": "ninmagic-saves",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "target": "Nintendo Switch homebrew NRO under Atmosphere",
   "primary_required_workflow": [
     "Start from emuMMC Homebrew Menu",
     "Confirm/select CFW sysMMC boot",
-    "Reboot/reopen same NRO on sysMMC with networking disabled beforehand",
+    "Read network/airplane notice, reboot and reopen same NRO on sysMMC; network diagnosis is informational",
     "Enumerate and copy original account/device saves read-only to SD",
     "Reboot/reopen same NRO on emuMMC",
     "Map copies to matching existing saves and chosen destination accounts",
@@ -29,7 +29,7 @@
   "github_repository": "ANE-JV/ninmagic-saves",
   "updates": "Own public HTTPS channel; network updater only in verified emuMMC",
   "ban_immunity_guaranteed": false,
-  "status": "0.2.0 beta compiled and host-tested; physical-console validation pending",
+  "status": "0.2.1 beta compiled and host-tested; physical-console validation pending",
   "universal_compatibility_verified": false,
   "hardware_tested": false,
   "do_not_publish": [
@@ -40,5 +40,6 @@
     "NAND images"
   ],
   "software_created": true,
-  "repository_created": true
+  "repository_created": true,
+  "network_status_blocks_save_export_or_reboot": false
 }

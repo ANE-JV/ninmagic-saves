@@ -359,10 +359,6 @@ bool safeRuntime(const RuntimeEnvironment& runtime, std::string& error) {
     if (!runtime.atmosphere || runtime.mode == RuntimeMode::Unknown) {
         error = "No se ha comprobado la NAND activa mediante Atmosphere (SPL 65007)."; return false;
     }
-    if (!runtime.offline) {
-        error = "Activa el modo avion, desactiva Wi-Fi y desconecta la red por cable. Vuelve a comprobar.";
-        return false;
-    }
     if (!runtime.gamesClosed) {
         error = "Cierra el juego antes de preparar o reiniciar. No se ha comprobado que solo este abierta NinMagic Saves.";
         return false;
@@ -540,7 +536,12 @@ RuntimeEnvironment inspectRuntimeEnvironment() {
                                              result.networkKnown, result.networkConnected);
     if (result.mode == RuntimeMode::Unknown) result.detail = "No se ha comprobado la NAND activa.";
     else if (!result.gamesClosed) result.detail = "Cierra el juego antes de preparar o reiniciar.";
-    else if (!result.offline) result.detail = "Sin comprobacion de desconexion: modo avion, Wi-Fi apagado y sin cable de red.";
+    else if (result.networkKnown && result.networkConnected)
+        result.detail = "NAND activa comprobada; la red esta conectada o intentando conectar. Consulta el aviso de red.";
+    else if (!result.networkKnown || !result.wifiDisabledKnown)
+        result.detail = "NAND activa comprobada; estado de red sin comprobar. Consulta el aviso de red.";
+    else if (!result.offline)
+        result.detail = "NAND activa comprobada; Wi-Fi habilitado, sin conexion en este momento. Consulta el aviso de red.";
     else result.detail = "NAND activa comprobada por Atmosphere; Wi-Fi apagado y sin conexion en este momento.";
     return result;
 #endif
@@ -583,14 +584,14 @@ RebootWorkflow inspectRebootWorkflow() {
     return result;
 }
 
-bool prepareRebootAccess(bool confirmed, bool originalAirplane, std::string& error) {
+bool prepareRebootAccess(bool confirmed, bool networkNoticeAcknowledged, std::string& error) {
     error.clear();
     if (!confirmed) { error = "La preparacion necesita confirmacion dentro de la aplicacion."; return false; }
     const auto state = inspectRebootWorkflow();
     if (!state.configurationValid || !state.canPrepareAccess) { error = state.detail; return false; }
     if (!safeRuntime(state.runtime, error)) return false;
-    if (state.runtime.mode == RuntimeMode::EmuMMC && !originalAirplane) {
-        error = "Antes de arrancar CFW en sysMMC debes activar modo avion en el sistema original y desconectar su red por cable."; return false;
+    if (state.runtime.mode == RuntimeMode::EmuMMC && !networkNoticeAcknowledged) {
+        error = "Lee el aviso de red y confirma para preparar el acceso al sistema original."; return false;
     }
     if (state.ownedConfigurationPresent) return true;
     const auto dir = sdPath("bootloader/ini");
@@ -663,16 +664,16 @@ bool prepareRebootPlan(RebootTarget target, RebootPlan& plan, std::string& error
         plan.detail += "Su ID esta duplicado o no es valido: no se selecciona automaticamente. ";
     plan.detail += "Tras arrancar, abre NinMagic Saves desde hbmenu. No se abre automaticamente. ";
     if (target == RebootTarget::CfwSysMMC)
-        plan.detail += "Es CFW sobre la memoria original, no el modo stock. Su modo avion debe estar activado previamente; no existe garantia de ausencia de baneo.";
+        plan.detail += "Es CFW sobre la memoria original, no el modo stock. Activa el modo avion en el sistema original y desconecta su cable de red antes de arrancar CFW. Hacerlo despues de iniciar puede ser tarde para evitar una conexion. No existe garantia de ausencia de baneo.";
     return true;
 }
 
 bool requestReboot(const RebootPlan& reviewed, bool confirmed,
-                   bool originalAirplane, std::string& error) {
+                   bool networkNoticeAcknowledged, std::string& error) {
     error.clear();
     if (!confirmed) { error = "El reinicio necesita la confirmacion final."; return false; }
-    if (reviewed.target == RebootTarget::CfwSysMMC && !originalAirplane) {
-        error = "Falta confirmar modo avion previo en el sistema original y ausencia de red por cable."; return false;
+    if (reviewed.target == RebootTarget::CfwSysMMC && !networkNoticeAcknowledged) {
+        error = "Lee el aviso de red y confirma para reiniciar al sistema original."; return false;
     }
     RebootPlan fresh;
     if (!prepareRebootPlan(reviewed.target, fresh, error)) return false;

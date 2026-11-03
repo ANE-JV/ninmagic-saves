@@ -89,7 +89,8 @@ bool safeDirectory(const std::string& path, bool create, std::string& error) {
 bool gate(Backend& b, SaveEnvironment mode, std::string& error, const std::string& instance={}) {
     const auto env=b.environment();
     if(env.mode!=mode) { error="Entorno no confirmado. Exporta desde sysMMC con Atmosphere; importa desde emuMMC."; return false; }
-    if(mode==SaveEnvironment::SysMMC && !env.offlineVerified) { error="Exportación bloqueada: desactiva Wi-Fi, desconecta la red y vuelve a comprobar. "+env.networkLabel; return false; }
+    // Network state is informational. The user may export with Wi-Fi enabled
+    // or an unknown connection state; this app still never opens the source writable.
     if(!env.gamesClosed) { error="Cierra todos los juegos antes de transferir partidas. "+env.processLabel; return false; }
     if(mode==SaveEnvironment::EmuMMC && (!digest(env.instanceId)||(!instance.empty()&&env.instanceId!=instance))) {
         error="No se pudo identificar esta emuMMC o no es la instancia de destino de la copia."; return false;
@@ -431,6 +432,12 @@ std::string destinationConfigFingerprint(uint64_t device,const std::string& text
 }
 
 Engine::Engine(Backend& backend,std::string root):backend_(backend),root_(std::move(root)) {}
+bool Engine::listSaves(std::vector<SaveEntry>& saves,std::string& error) {
+    saves.clear(); error.clear(); const auto env=backend_.environment();
+    if(env.mode==SaveEnvironment::Unknown) { error="Entorno activo desconocido; no se enumerarán partidas."; return false; }
+    if(!gate(backend_,env.mode,error)) return false;
+    return backend_.enumerate(saves,error);
+}
 bool Engine::listExports(std::vector<ExportEntry>& out,std::string& error) {
     out.clear(); error.clear(); std::vector<std::string> ids;
     if(!listIds(root_+"/exports",ids,error)) return false;
@@ -661,10 +668,7 @@ public:
 }
 TransferEnvironment inspectTransferEnvironment() { NativeBackend b; return b.environment(); }
 bool listTransferSaves(std::vector<SaveEntry>& saves,std::string& error) {
-    NativeBackend b; auto env=b.environment(); saves.clear();
-    if(env.mode==SaveEnvironment::Unknown) { error="Entorno activo desconocido; no se enumerarán partidas."; return false; }
-    if(!transfer_detail::gate(b,env.mode,error)) return false;
-    return b.enumerate(saves,error);
+    NativeBackend b; transfer_detail::Engine e(b,TransferRoot); return e.listSaves(saves,error);
 }
 bool listTransferExports(std::vector<ExportEntry>& out,std::string& error) { NativeBackend b; transfer_detail::Engine e(b,TransferRoot); return e.listExports(out,error); }
 TransferResult exportTransferSave(const SaveEntry& source) { NativeBackend b; transfer_detail::Engine e(b,TransferRoot); return e.exportSave(source); }
