@@ -71,6 +71,17 @@ std::string transferTitleId(uint64_t titleId);
 namespace transfer_detail {
 // Local anti-mix-up fingerprint; never use config text as runtime NAND proof.
 std::string destinationConfigFingerprint(uint64_t deviceId, const std::string& config, std::string& profilePath);
+// Read-only fsp-srv extra-data response. Its usable data area is distinct from
+// the save container size and the journal; neither is spare space for files.
+struct SaveCapacityMetadata {
+    uint64_t titleId = 0, userLow = 0, userHigh = 0, systemSaveDataId = 0;
+    SaveKind kind = SaveKind::Account;
+    uint16_t index = 0;
+    uint8_t rank = 0;
+    int64_t dataSize = 0, journalSize = 0;
+};
+bool validatedSaveCapacity(const SaveEntry& mounted, const SaveCapacityMetadata& metadata,
+                           uint64_t& bytes, std::string& error);
 class Backend {
 public:
     virtual ~Backend() = default;

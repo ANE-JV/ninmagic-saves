@@ -10,6 +10,7 @@
 #include <fstream>
 #include <functional>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <sstream>
 #include <string>
@@ -22,6 +23,13 @@ static void require(bool value,const std::string& label) { ++checks; if(!value) 
 static void put(const std::string& path,const std::string& value) { fs::create_directories(fs::path(path).parent_path()); std::ofstream out(path,std::ios::binary); out<<value; require(bool(out),"fixture write "+path); }
 static std::string get(const std::string& path) { std::ifstream in(path,std::ios::binary); std::ostringstream out; out<<in.rdbuf(); return out.str(); }
 static std::string sha(const std::string& s) { transfer_detail::Sha256 h; h.add(reinterpret_cast<const uint8_t*>(s.data()),s.size()); return h.finish(); }
+static transfer_detail::SaveCapacityMetadata capacityMetadata(const SaveEntry& save,int64_t capacity) {
+    transfer_detail::SaveCapacityMetadata metadata;
+    metadata.titleId=save.titleId; metadata.userLow=save.userLow; metadata.userHigh=save.userHigh;
+    metadata.kind=save.kind; metadata.index=save.index; metadata.rank=save.rank;
+    metadata.dataSize=capacity; metadata.journalSize=16*1024*1024;
+    return metadata;
+}
 static std::map<std::string,std::string> contents(const std::string& root) {
     std::map<std::string,std::string> result;
     for(const auto& entry:fs::recursive_directory_iterator(root)) result[fs::relative(entry.path(),root).generic_string()]=entry.is_directory()?"<directory>":get(entry.path().generic_string());
@@ -29,13 +37,15 @@ static std::map<std::string,std::string> contents(const std::string& root) {
 }
 struct Fake final : transfer_detail::Backend {
     TransferEnvironment env;
-    SaveEntry source,target;
+    SaveEntry source,target,mountedSave;
     std::string sourcePath,targetPath,mountedPath;
     std::function<bool(const char*,const std::string&)> fault;
     unsigned readMounts=0,writeMounts=0,saveCommits=0,sdCommits=0,envChecks=0;
     unsigned failCommit=0,failSd=0;
     uint64_t capacity=64*1024*1024;
     bool capacityKnown=true;
+    unsigned readonlyCapacityQueries=0,writableCapacityQueries=0;
+    std::function<void(transfer_detail::SaveCapacityMetadata&)> changeCapacityMetadata;
     bool failAllCommits=false,missingTarget=false,duplicateTarget=false,failEnumeration=false,mounted=false,writable=false;
     Fake() {
         source.titleId=0x0100000012345000ULL; source.saveDataId=101; source.userLow=11; source.userHigh=12; source.gameName="Juego de prueba"; source.userName="Usuario original";
@@ -54,10 +64,18 @@ struct Fake final : transfer_detail::Backend {
         if(entry.saveDataId==source.saveDataId) { require(!write,"source never opened writable"); path=sourcePath; }
         else if(entry.saveDataId==target.saveDataId) path=targetPath;
         else return false;
-        mountedPath=path; mounted=true; writable=write; if(write) ++writeMounts; else ++readMounts; return true;
+        mountedPath=path; mountedSave=entry; mounted=true; writable=write; if(write) ++writeMounts; else ++readMounts; return true;
     }
-    void unmount() override { mounted=false; writable=false; mountedPath.clear(); }
-    bool saveCapacity(uint64_t& bytes,std::string& error) override { bytes=capacity; if(!capacityKnown) error="capacity unknown"; return capacityKnown; }
+    void unmount() override { mounted=false; writable=false; mountedPath.clear(); mountedSave={}; }
+    bool saveCapacity(uint64_t& bytes,std::string& error) override {
+        bytes=0;
+        require(mounted&&mountedPath==targetPath,"capacity queries identify the mounted destination");
+        if(writable) ++writableCapacityQueries; else ++readonlyCapacityQueries;
+        if(!capacityKnown) { error="metadata capacity query failed"; return false; }
+        auto metadata=capacityMetadata(mountedSave,static_cast<int64_t>(capacity));
+        if(changeCapacityMetadata) changeCapacityMetadata(metadata);
+        return transfer_detail::validatedSaveCapacity(mountedSave,metadata,bytes,error);
+    }
     bool commitSave(std::string& error) override {
         require(mounted&&writable&&mountedPath==targetPath,"commits only mounted destination");
         ++saveCommits; if(failAllCommits||saveCommits==failCommit) { error="injected save commit failure"; return false; } return true;
@@ -96,6 +114,36 @@ int main() {
     require(sha("")=="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","SHA256 empty vector");
     require(sha("abc")=="ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad","SHA256 standard vector");
     {
+        Fake f;
+        auto metadata=capacityMetadata(f.target,64*1024*1024);
+        metadata.journalSize=std::numeric_limits<int64_t>::max();
+        uint64_t bytes=999; std::string error="previous error";
+        require(transfer_detail::validatedSaveCapacity(f.target,metadata,bytes,error)&&bytes==64*1024*1024&&error.empty(),
+                "capacity uses verified data area only, never adds even a huge journal");
+        auto shared=f.target; shared.kind=SaveKind::Device; shared.userLow=shared.userHigh=0;
+        require(transfer_detail::validatedSaveCapacity(shared,capacityMetadata(shared,1024),bytes,error)&&bytes==1024,
+                "device save capacity supports its zero account without mapping to an account save");
+        for(unsigned bad=0;bad<12;++bad) {
+            auto changed=metadata; auto expected=f.target; bytes=999; error.clear();
+            switch(bad) {
+                case 0: ++changed.titleId; break;
+                case 1: ++changed.userLow; break;
+                case 2: ++changed.userHigh; break;
+                case 3: changed.kind=SaveKind::Device; break;
+                case 4: ++changed.index; break;
+                case 5: ++changed.rank; break;
+                case 6: changed.systemSaveDataId=1; break;
+                case 7: changed.dataSize=-1; break;
+                case 8: changed.dataSize=0; break;
+                case 9: changed.journalSize=-1; break;
+                case 10: expected.saveDataId=0; break;
+                case 11: expected.titleId=0; break;
+            }
+            require(!transfer_detail::validatedSaveCapacity(expected,changed,bytes,error)&&bytes==0&&!error.empty(),
+                    "wrong identity or invalid metadata fails closed without stale capacity "+std::to_string(bad));
+        }
+    }
+    {
         std::string path;
         const auto file=transfer_detail::destinationConfigFingerprint(123,"[emummc]\nenabled=1\npath=custom/profile\n",path);
         require(file.size()==64&&path=="custom/profile","custom file profile with Hekate default sector/id accepted");
@@ -110,6 +158,8 @@ int main() {
         require(plan.destination.userLow!=plan.exported.source.userLow,"explicit different-user mapping retained");
         require(fs::exists(f.store+"/backups/"+plan.backupId+"/complete.sha256"),"backup durable before confirmation");
         auto r=f.engine.applyRestore(plan); require(r.ok,"apply valid transfer: "+r.message);
+        require(f.b.readonlyCapacityQueries==1&&f.b.writableCapacityQueries==1,
+                "real capacity is checked through metadata during readonly preparation and reread before writes");
         require(contents(f.b.targetPath)==f.originalSource,"destination exactly replaced, stale files removed and empty directories retained");
         require(contents(f.b.sourcePath)==f.originalSource,"original unchanged after restore"); require(f.b.saveCommits==1,"one save commit on successful apply");
         require(!f.engine.applyRestore(plan).ok,"confirmed plan cannot apply twice");
@@ -223,10 +273,32 @@ int main() {
         Fixture f(base,"backup-corrupt"); f.exportGood(); auto plan=f.prepareGood(); put(f.store+"/backups/"+plan.backupId+"/data/old.dat","damage");
         require(!f.engine.applyRestore(plan).ok,"damaged mandatory backup blocks before mutation"); require(f.b.writeMounts==0,"bad backup no writable mount");
     }
-    for(unsigned kind=0;kind<2;++kind) {
-        Fixture f(base,"capacity-"+std::to_string(kind)); f.exportGood(); if(kind==0) f.b.capacity=32; else f.b.capacityKnown=false;
-        RestorePlan plan; require(!f.engine.prepareRestore(f.exported,f.b.target,plan).ok,"insufficient or unknown target capacity rejected");
-        require(f.b.writeMounts==0&&contents(f.b.targetPath)==f.originalTarget,"capacity failure does not change destination");
+    for(unsigned kind=0;kind<4;++kind) {
+        Fixture f(base,"capacity-"+std::to_string(kind)); f.exportGood();
+        if(kind==0) f.b.capacity=32;
+        else if(kind==1) f.b.capacityKnown=false;
+        else if(kind==2) f.b.changeCapacityMetadata=[](transfer_detail::SaveCapacityMetadata& m){ ++m.userHigh; };
+        else f.b.changeCapacityMetadata=[](transfer_detail::SaveCapacityMetadata& m){ m.dataSize=-1; };
+        RestorePlan plan; require(!f.engine.prepareRestore(f.exported,f.b.target,plan).ok,"insufficient, unknown or mismatched target capacity rejected");
+        require(f.b.writeMounts==0&&f.b.saveCommits==0&&contents(f.b.targetPath)==f.originalTarget,"capacity failure does not change destination");
+        require(!plan.backupVerified&&plan.id.empty()&&fs::is_empty(f.store+"/backups"),"failed capacity check cannot produce a confirmed plan or partial destination backup");
+        require(contents(f.b.sourcePath)==f.originalSource,"capacity failure preserves source export data");
+    }
+    for(unsigned kind=0;kind<4;++kind) {
+        Fixture f(base,"capacity-after-confirm-"+std::to_string(kind)); f.exportGood(); const auto plan=f.prepareGood();
+        const auto originalBackup=contents(f.store+"/backups/"+plan.backupId);
+        if(kind==0) f.b.capacity=32;
+        else if(kind==1) f.b.capacityKnown=false;
+        else if(kind==2) f.b.changeCapacityMetadata=[](transfer_detail::SaveCapacityMetadata& m){ ++m.titleId; };
+        else f.b.changeCapacityMetadata=[](transfer_detail::SaveCapacityMetadata& m){ m.dataSize=-1; };
+        auto result=f.engine.applyRestore(plan);
+        require(!result.ok&&!result.recoveryRequired,"capacity/identity changes after review reject application before mutation");
+        require(f.b.saveCommits==0&&contents(f.b.targetPath)==f.originalTarget,"second capacity check leaves destination contents untouched");
+        require(contents(f.store+"/backups/"+plan.backupId)==originalBackup,"second capacity failure retains verified destination backup unchanged");
+        require(contents(f.b.sourcePath)==f.originalSource,"second capacity failure never writes source");
+        require(f.b.readonlyCapacityQueries==1&&f.b.writableCapacityQueries==1,"capacity after confirmation is queried again instead of reused");
+        f.b.capacity=64*1024*1024; f.b.capacityKnown=true; f.b.changeCapacityMetadata={};
+        require(f.engine.applyRestore(plan).ok,"same export and prepared backup can retry once verified capacity is available");
     }
     for(unsigned fault=0;fault<3;++fault) {
         Fixture f(base,"rollback-"+std::to_string(fault)); f.exportGood(); auto plan=f.prepareGood(); bool fired=false;

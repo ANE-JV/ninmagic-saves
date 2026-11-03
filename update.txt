@@ -1,5 +1,5 @@
 NINMAGIC-SAVES-UPDATE-1
-version=0.2.2
-url=https://raw.githubusercontent.com/ANE-JV/ninmagic-saves/main/versions/v0.2.2/NinMagic-Saves.nro
-sha256=dfdfa5ba9f0edf0033055f8add105a94fd1e9902d8032982e130d07ab3bcf889
-size=2037745
+version=0.2.3
+url=https://raw.githubusercontent.com/ANE-JV/ninmagic-saves/main/versions/v0.2.3/NinMagic-Saves.nro
+sha256=33c782a9899601bf4ce9b4ece009e5d6ce3243fdd5dd68fa50827e6a9e975517
+size=2041841

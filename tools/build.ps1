@@ -3,7 +3,7 @@ param(
     [switch]$PrepareAssets,
     [switch]$Preview,
     [string]$DevkitPro = 'C:\devkitPro',
-    [ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+$')][string]$ExpectedVersion='0.2.2'
+    [ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+$')][string]$ExpectedVersion='0.2.3'
 )
 
 $ErrorActionPreference = 'Stop'

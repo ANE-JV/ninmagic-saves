@@ -410,6 +410,25 @@ bool restoreBackup(Backend& b,const std::string& root,Journal& journal,const std
 }
 } // namespace
 
+bool validatedSaveCapacity(const SaveEntry& mounted,const SaveCapacityMetadata& metadata,
+                           uint64_t& bytes,std::string& error) {
+    bytes=0; error.clear();
+    if(!validSave(mounted)||metadata.systemSaveDataId||
+       metadata.titleId!=mounted.titleId||metadata.userLow!=mounted.userLow||metadata.userHigh!=mounted.userHigh||
+       metadata.kind!=mounted.kind||metadata.index!=mounted.index||metadata.rank!=mounted.rank) {
+        error="Los datos de capacidad no corresponden al juego, usuario y tipo de la partida de destino.";
+        return false;
+    }
+    if(metadata.dataSize<=0||metadata.journalSize<0) {
+        error="La capacidad útil de la partida de destino no es válida. No se modificará la partida.";
+        return false;
+    }
+    // No addition: the journal and the container overhead cannot hold game
+    // files. The response is re-read before applying, never cached in a plan.
+    bytes=static_cast<uint64_t>(metadata.dataSize);
+    return true;
+}
+
 std::string destinationConfigFingerprint(uint64_t device,const std::string& text,std::string& profilePath) {
     profilePath.clear(); if(!device||text.size()>8192||text.find('\0')!=std::string::npos) return {};
     auto trim=[](const std::string& s) { auto a=s.find_first_not_of(" \t\r"); if(a==std::string::npos) return std::string{}; auto z=s.find_last_not_of(" \t\r"); return s.substr(a,z-a+1); };
@@ -531,6 +550,7 @@ std::string instanceFingerprint(uint64_t device) {
 }
 class NativeBackend final : public transfer_detail::Backend {
     bool spl_=false,nifm_=false,pm_=false,mounted_=false,writable_=false;
+    SaveEntry mountedSave_;
 public:
     ~NativeBackend() override { unmount(); if(pm_) pmdmntExit(); if(nifm_) nifmExit(); if(spl_) splExit(); }
     TransferEnvironment environment() override {
@@ -635,15 +655,28 @@ public:
         const auto rc=writable?fsOpenSaveDataFileSystem(&fs,FsSaveDataSpaceId_User,&attr):fsOpenReadOnlySaveDataFileSystem(&fs,FsSaveDataSpaceId_User,&attr);
         if(R_FAILED(rc)) { error="No se pudo abrir la partida "+std::string(writable?"de destino":"en solo lectura")+": "+resultCode(rc)+". Inicia el juego una vez si aún no tiene partida."; return false; }
         if(fsdevMountDevice("nmsvsave",fs)<0) { error="No se pudo montar la partida. No se creará ninguna partida nueva."; return false; }
-        mounted_=true; writable_=writable; path="nmsvsave:/"; return true;
+        mounted_=true; writable_=writable; mountedSave_=save; path="nmsvsave:/"; return true;
     }
-    void unmount() override { if(mounted_) fsdevUnmountDevice("nmsvsave"); mounted_=false; writable_=false; }
+    void unmount() override { if(mounted_) fsdevUnmountDevice("nmsvsave"); mounted_=false; writable_=false; mountedSave_={}; }
     bool saveCapacity(uint64_t& bytes,std::string& error) override {
-        bytes=0; auto* fs=mounted_?fsdevGetDeviceFileSystem("nmsvsave"):nullptr;
+        bytes=0; error.clear(); auto* fs=mounted_?fsdevGetDeviceFileSystem("nmsvsave"):nullptr;
         if(!fs) { error="No hay una partida montada para comprobar su capacidad."; return false; }
-        s64 capacity=0; const auto rc=fsFsGetTotalSpace(fs,"/",&capacity);
-        if(R_FAILED(rc)||capacity<0) { error="No se pudo comprobar la capacidad de la partida de destino: "+resultCode(rc); return false; }
-        bytes=uint64_t(capacity); return true;
+        // GetTotalSpace on a read-only save FS is unsupported (FS 6371,
+        // 0x0031C602). Query the existing save's extra data through fsp-srv
+        // instead; this neither opens a writable handle nor resizes the save.
+        // data_size is the usable area, not FsSaveDataInfo.size (container).
+        FsSaveDataExtraData extra{};
+        const auto rc=fsReadSaveDataFileSystemExtraDataBySaveDataSpaceId(
+            &extra,sizeof(extra),FsSaveDataSpaceId_User,mountedSave_.saveDataId);
+        if(R_FAILED(rc)) { error="No se pudo leer la capacidad real de la partida de destino: "+resultCode(rc); return false; }
+        transfer_detail::SaveCapacityMetadata metadata;
+        metadata.titleId=extra.attr.application_id;
+        metadata.userLow=extra.attr.uid.uid[0]; metadata.userHigh=extra.attr.uid.uid[1];
+        metadata.systemSaveDataId=extra.attr.system_save_data_id;
+        metadata.kind=static_cast<SaveKind>(extra.attr.save_data_type);
+        metadata.rank=extra.attr.save_data_rank; metadata.index=extra.attr.save_data_index;
+        metadata.dataSize=extra.data_size; metadata.journalSize=extra.journal_size;
+        return transfer_detail::validatedSaveCapacity(mountedSave_,metadata,bytes,error);
     }
     bool commitSave(std::string& error) override {
         if(!mounted_||!writable_) { error="No hay un destino abierto para confirmar."; return false; }

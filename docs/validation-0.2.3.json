@@ -1,0 +1,62 @@
+{
+  "version": "0.2.3",
+  "date": "2026-11-03",
+  "nro_sha256": "33c782a9899601bf4ce9b4ece009e5d6ce3243fdd5dd68fa50827e6a9e975517",
+  "nro_bytes": 2041841,
+  "switch_build": "devkitA64/libnx: passed",
+  "nro_resources": "NACP identity/version, icon, RomFS font/logo hashes verified",
+  "change": "Query verified save metadata data_size instead of GetTotalSpace on a read-only filesystem. Preserve read-only backup preparation and reread capacity before restore. Different game versions remain allowed; no save format conversion.",
+  "host_suites": {
+    "self_updater": {
+      "scenarios": 76,
+      "checks": 747,
+      "passed": true
+    },
+    "https": {
+      "checks": 30,
+      "passed": true
+    },
+    "ui_environment_policy": {
+      "checks": 20,
+      "passed": true
+    },
+    "save_transfer": {
+      "checks": 946,
+      "passed": true
+    },
+    "reboot_workflow": {
+      "passed": true,
+      "fixtures": "synthetic",
+      "network_combinations": 32
+    },
+    "archived_reader_client": {
+      "checks": 236,
+      "passed": true,
+      "linked_into_nro": false
+    },
+    "archived_reader_probe": {
+      "passed": true,
+      "linked_into_nro": false
+    }
+  },
+  "capacity_checks": [
+    "read-only destination preparation",
+    "data_size only; journal excluded",
+    "metadata identity and size validation",
+    "unknown/insufficient capacity before preparation and application",
+    "verified backup and source/destination preserved on failure",
+    "retry same plan after capacity becomes verifiable"
+  ],
+  "existing_export_format_changed": false,
+  "existing_backup_format_changed": false,
+  "ui_previews": "Generated 0.2.3; import confirmation and help visually checked, no clipping.",
+  "independent_review": "No blocking findings in capacity API, identity checks, read-only source, backup and recovery paths.",
+  "hardware_tested": false,
+  "save_import_tested_on_console": false,
+  "universal_compatibility_verified": false,
+  "note": "Host fixtures and native compilation passed. No console write, MTP installation or reboot performed. User updates through the app.",
+  "references": [
+    "https://github.com/Atmosphere-NX/Atmosphere/blob/master/libraries/libvapours/include/vapours/results/fs_results.hpp",
+    "https://github.com/switchbrew/libnx/blob/master/nx/source/services/fs.c"
+  ]
+}

@@ -1,6 +1,6 @@
 {
   "name": "ninmagic-saves",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "target": "Nintendo Switch homebrew NRO under Atmosphere",
   "primary_required_workflow": [
     "Start from emuMMC Homebrew Menu",
@@ -19,6 +19,8 @@
   "hardware_specific_reboot": "Erista one-shot Hekate; manual handoff on Mariko or unsupported configuration",
   "match_games_by": "Program/Title ID and save kind, not source user name",
   "different_source_and_destination_users_allowed": true,
+  "different_game_versions_allowed": true,
+  "save_format_conversion_supported": false,
   "multiple_source_saves": "User selects distinct saves; never silently merge",
   "before_overwriting_destination": "Verified backup and explicit in-app confirmation",
   "branding": {
@@ -29,7 +31,7 @@
   "github_repository": "ANE-JV/ninmagic-saves",
   "updates": "Own public HTTPS channel; network updater only in verified emuMMC",
   "ban_immunity_guaranteed": false,
-  "status": "0.2.2 beta compiled and host-tested; physical-console validation pending",
+  "status": "0.2.3 beta compiled and host-tested; physical-console validation pending",
   "universal_compatibility_verified": false,
   "hardware_tested": false,
   "do_not_publish": [
